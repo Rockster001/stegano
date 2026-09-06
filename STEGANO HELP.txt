@@ -1,0 +1,11 @@
+STEGANO — MY TWO BUTTONS
+1. "Stegano Aider" icon  → work with the AI helper
+2. "Save" icon           → save + backup (end of every session, AI or not)
+
+IF CONFUSED OR SOMETHING BREAKS:
+Ask an AI in the browser, paste exactly what you see, do what it says.
+
+RULES THAT PROTECT THE PROGRAM:
+- Save often — nothing can be lost after a save
+- The AI cannot touch files unless I add them
+- "/undo" takes back the AI's last change
