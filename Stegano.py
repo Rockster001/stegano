@@ -27,6 +27,11 @@ from PyQt5.QtCore import Qt, pyqtSignal, QThread, QTimer, QSettings, QUrl, QEven
 from PyQt5.QtGui import QFont, QPixmap, QCursor, QDesktopServices, QIcon
 from PyQt5.QtMultimedia import QSoundEffect, QMediaPlayer, QMediaContent
 from audio_manager import AudioManager
+from password_utils import (
+    estimate_password_strength,
+    PasswordStrengthMeter,
+    SavedPasswordsDialog
+)
 
 VERSION = os.path.basename(__file__).replace("Stegano", "").replace(".py", "")
 STEALTH_HEADER = hashlib.sha256(b"STEGO_MAGIC").digest()
@@ -280,16 +285,6 @@ class PasswordStrengthMeter(QWidget):
                 box.setStyleSheet("background-color: rgba(100, 100, 100, 0.3); border-radius: 2px;")
         self.setToolTip(self.TIER_LABELS[tier])
 
-class CustomHelpTooltip(QLabel):
-    def __init__(self):
-        super().__init__()
-        self.setFixedSize(400, 120)
-        self.setWordWrap(True)
-        self.setAlignment(Qt.AlignCenter)
-        self.setAttribute(Qt.WA_TransparentForMouseEvents)
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
-        self.setStyleSheet("QLabel { background-color: #1a1a2e; color: #E0E0E0; border: 2px solid #4A85B8; border-radius: 8px; padding: 12px 16px; font-size: 14px; }")
-        self.hide()
 
 class SavedPasswordsDialog(QDialog):
     def __init__(self, passwords, parent=None):
@@ -811,7 +806,7 @@ class SteganographyApp(QMainWindow):
         self._saved_passwords = self._load_saved_passwords()
         self.toast_notification = ToastNotification(self)
         self.loading_spinner = LoadingSpinner(self)
-        self.password_strength_indicator = PasswordStrengthMeter()
+        self.password_strength_indicator = PasswordStrengthMeter(self)
         self.capacity_progress_bar = QProgressBar()
         self.capacity_progress_bar.setFixedHeight(8)
         self.capacity_progress_bar.setFixedWidth(80)
