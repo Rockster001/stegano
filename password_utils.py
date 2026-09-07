@@ -1,3 +1,6 @@
+from PyQt5.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout, QGridLayout, QDialog, QListWidget, QPushButton, QTextEdit, QLineEdit, QSizePolicy
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer
+from PyQt5.QtGui import QFont, QColor, QPainter
 _COMMON_WEAK_WORDS = {
     "password", "letmein", "login", "admin", "welcome", "qwerty", "dragon",
     "master", "shadow", "monkey", "sunshine", "princess", "football",
@@ -180,3 +183,5 @@ class SavedPasswordsDialog(QDialog):
         if reply == QMessageBox.Yes:
             self.passwords = []
             self._populate_list()
+
+
