@@ -797,7 +797,14 @@ class SteganographyApp(QMainWindow):
         self.audio = AudioManager()
         self.help_mode_active = False
         self._tooltip_map = {}
-        self.help_tooltip = CustomHelpTooltip()
+        self.help_tooltip = QLabel()
+        self.help_tooltip.setFixedSize(400, 120)
+        self.help_tooltip.setWordWrap(True)
+        self.help_tooltip.setAlignment(Qt.AlignCenter)
+        self.help_tooltip.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.help_tooltip.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.help_tooltip.setStyleSheet("QLabel { background-color: #1a1a2e; color: #E0E0E0; border: 2px solid #4A85B8; border-radius: 8px; padding: 12px 16px; font-size: 14px; }")
+        self.help_tooltip.hide()
         self._click_timer = QTimer(self)
         self._click_timer.setSingleShot(True)
         self._click_timer.setInterval(QApplication.doubleClickInterval())
