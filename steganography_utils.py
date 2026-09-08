@@ -1,3 +1,4 @@
+import hashlib
 import itertools
 import secrets
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
