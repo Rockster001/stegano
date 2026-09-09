@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives import hashes
 
 STEALTH_HEADER = hashlib.sha256(b"STEGO_MAGIC").digest()
 LEGACY_HEADER = b"STEGO_MAGIC"
+DUAL_HEADER = hashlib.sha256(b"STEGO_DUAL_MAGIC").digest()
 DELIMITER = "\x00\x00\x03"
 
 AES_KEY_SIZE = 32
@@ -84,6 +85,14 @@ def encode_image(img_path, msg, save_path, header_bytes, delim, out_format="PNG"
     payload = msg.encode("utf-8")
     if password: payload = _encrypt_bytes_aes(payload, password)
     full_data = header_bytes + payload + delim.encode("utf-8")
+    _embed_bits_and_save(img_path, full_data, save_path, out_format)
+
+def encode_dual_image(img_path, msg1, msg2, save_path, dual_header_bytes, delim, out_format="PNG", pass1="", pass2=""):
+    payload1 = msg1.encode("utf-8")
+    if pass1: payload1 = _encrypt_bytes_aes(payload1, pass1)
+    payload2 = _encrypt_bytes_aes(msg2.encode("utf-8"), pass2)
+    delim_bytes = delim.encode("utf-8")
+    full_data = dual_header_bytes + payload1 + delim_bytes + payload2 + delim_bytes
     _embed_bits_and_save(img_path, full_data, save_path, out_format)
 
 def decode_image(img_path, delim, password=""):
