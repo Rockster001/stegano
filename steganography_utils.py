@@ -139,3 +139,68 @@ def decode_image(img_path, delim, password=""):
         return text, False
     except UnicodeDecodeError:
         return "", False
+
+def _extract_raw_lsb_bytes(img_path):
+    img = Image.open(img_path).convert("RGB")
+    arr = np.array(img)
+    flat = arr.reshape(-1) & 1
+    usable_len = (flat.size // 8) * 8
+    if usable_len == 0: return b""
+    return np.packbits(flat[:usable_len]).tobytes()
+
+def _extract_dual_layers(img_path, delim):
+    raw_bytes = _extract_raw_lsb_bytes(img_path)
+    if not raw_bytes:
+        return None, None
+    idx = raw_bytes.find(DUAL_HEADER)
+    if idx == -1:
+        return None, None
+    payload_start = idx + len(DUAL_HEADER)
+    delim_bytes = delim.encode("utf-8")
+    d1_idx = raw_bytes[payload_start:].find(delim_bytes)
+    if d1_idx == -1:
+        return None, None
+    layer1_end = payload_start + d1_idx
+    layer1_bytes = raw_bytes[payload_start:layer1_end]
+    layer2_start = layer1_end + len(delim_bytes)
+    d2_idx = raw_bytes[layer2_start:].find(delim_bytes)
+    if d2_idx == -1:
+        return layer1_bytes, None
+    layer2_end = layer2_start + d2_idx
+    layer2_bytes = raw_bytes[layer2_start:layer2_end]
+    return layer1_bytes, layer2_bytes
+
+def _try_decrypt_payload(payload_bytes, password):
+    if password:
+        try:
+            decrypted_bytes = _decrypt_bytes_aes(payload_bytes, password)
+            if decrypted_bytes is not None:
+                return decrypted_bytes.decode("utf-8"), True
+        except (UnicodeDecodeError, ValueError, TypeError):
+            pass
+        try:
+            decrypted_bytes = _encrypt_bytes(payload_bytes, password)
+            return decrypted_bytes.decode("utf-8"), True
+        except (UnicodeDecodeError, ValueError, TypeError):
+            pass
+        try:
+            return payload_bytes.decode("utf-8"), False
+        except UnicodeDecodeError:
+            return None, False
+    try:
+        return payload_bytes.decode("utf-8"), False
+    except UnicodeDecodeError:
+        return None, False
+
+def decode_dual_image(img_path, delim, pass1="", pass2=""):
+    layer1_bytes, layer2_bytes = _extract_dual_layers(img_path, delim)
+    if layer1_bytes is None:
+        return "", 0, False, ""
+    layer1_text, layer1_was_enc = _try_decrypt_payload(layer1_bytes, pass1)
+    if layer1_text is None:
+        return "", 0, False, ""
+    if pass2 and layer2_bytes is not None:
+        layer2_text, layer2_was_enc = _try_decrypt_payload(layer2_bytes, pass2)
+        if layer2_text is not None:
+            return layer2_text, 2, layer2_was_enc, layer1_text
+    return layer1_text, 1, layer1_was_enc, layer1_text
