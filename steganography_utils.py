@@ -9,6 +9,10 @@ from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 
+STEALTH_HEADER = hashlib.sha256(b"STEGO_MAGIC").digest()
+LEGACY_HEADER = b"STEGO_MAGIC"
+DELIMITER = "\x00\x00\x03"
+
 AES_KEY_SIZE = 32
 AES_SALT_SIZE = 16
 AES_IV_SIZE = 16
@@ -81,3 +85,48 @@ def encode_image(img_path, msg, save_path, header_bytes, delim, out_format="PNG"
     if password: payload = _encrypt_bytes_aes(payload, password)
     full_data = header_bytes + payload + delim.encode("utf-8")
     _embed_bits_and_save(img_path, full_data, save_path, out_format)
+
+def decode_image(img_path, delim, password=""):
+    img = Image.open(img_path).convert("RGB")
+    arr = np.array(img)
+    flat = arr.reshape(-1) & 1
+    usable_len = (flat.size // 8) * 8
+    if usable_len == 0: return "", False
+    raw_bytes = np.packbits(flat[:usable_len]).tobytes()
+    delim_bytes = delim.encode("utf-8")
+    idx_stealth = raw_bytes.find(STEALTH_HEADER)
+    idx_legacy = raw_bytes.find(LEGACY_HEADER)
+    if idx_stealth != -1:
+        idx = idx_stealth; header_len = len(STEALTH_HEADER)
+    elif idx_legacy != -1:
+        idx = idx_legacy; header_len = len(LEGACY_HEADER)
+    else:
+        return "", False
+    payload_start = idx + header_len
+    d_idx = raw_bytes[payload_start:].find(delim_bytes)
+    if d_idx == -1: return "", False
+    payload_bytes = raw_bytes[payload_start : payload_start + d_idx]
+    if password:
+        try:
+            decrypted_bytes = _decrypt_bytes_aes(payload_bytes, password)
+            if decrypted_bytes is not None:
+                text = decrypted_bytes.decode("utf-8")
+                return text, True
+        except (UnicodeDecodeError, ValueError, TypeError):
+            pass
+        try:
+            decrypted_bytes = _encrypt_bytes(payload_bytes, password)
+            text = decrypted_bytes.decode("utf-8")
+            return text, True
+        except (UnicodeDecodeError, ValueError, TypeError):
+            pass
+        try:
+            text = payload_bytes.decode("utf-8")
+            return text, True
+        except UnicodeDecodeError:
+            return "", False
+    try:
+        text = payload_bytes.decode("utf-8")
+        return text, False
+    except UnicodeDecodeError:
+        return "", False
