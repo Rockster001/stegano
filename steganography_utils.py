@@ -1,6 +1,8 @@
 import hashlib
 import itertools
 import secrets
+import numpy as np
+from PIL import Image
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import padding
@@ -47,3 +49,35 @@ def _encrypt_bytes(data, password):
     if not password: return data
     key = hashlib.sha256(password.encode()).digest()
     return bytes(b ^ k for b, k in zip(data, itertools.cycle(key)))
+
+def _embed_bits_and_save(img_path, full_data, save_path, out_format="PNG"):
+    img = Image.open(img_path)
+    exif_data, icc_data, dpi_data = img.info.get("exif"), img.info.get("icc_profile"), img.info.get("dpi")
+    img_rgb = img.convert("RGB")
+    arr = np.array(img_rgb)
+    h, w, c = arr.shape
+    flat = arr.reshape(-1)
+    bits = np.unpackbits(np.frombuffer(full_data, dtype=np.uint8))
+    if bits.size > flat.size: raise ValueError("Message exceeds image capacity.")
+    flat[:bits.size] = (flat[:bits.size] & 0xFE) | bits
+    new_img = Image.fromarray(flat.reshape(h, w, c).astype(np.uint8), "RGB")
+    out_format = out_format.upper()
+    if out_format == "BMP": kwargs = {"format": "BMP"}
+    elif out_format == "TIFF":
+        kwargs = {"format": "TIFF"}
+        if icc_data: kwargs["icc_profile"] = icc_data
+    elif out_format == "WEBP":
+        kwargs = {"format": "WEBP", "lossless": True}
+        if icc_data: kwargs["icc_profile"] = icc_data
+    else:
+        kwargs = {"format": "PNG"}
+        if exif_data: kwargs["exif"] = exif_data
+        if icc_data: kwargs["icc_profile"] = icc_data
+        if dpi_data: kwargs["dpi"] = dpi_data
+    new_img.save(save_path, **kwargs)
+
+def encode_image(img_path, msg, save_path, header_bytes, delim, out_format="PNG", password=""):
+    payload = msg.encode("utf-8")
+    if password: payload = _encrypt_bytes_aes(payload, password)
+    full_data = header_bytes + payload + delim.encode("utf-8")
+    _embed_bits_and_save(img_path, full_data, save_path, out_format)
