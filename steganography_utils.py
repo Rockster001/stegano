@@ -204,3 +204,16 @@ def decode_dual_image(img_path, delim, pass1="", pass2=""):
         if layer2_text is not None:
             return layer2_text, 2, layer2_was_enc, layer1_text
     return layer1_text, 1, layer1_was_enc, layer1_text
+
+def detect_message_format(img_path, delim):
+    try:
+        raw_bytes = _extract_raw_lsb_bytes(img_path)
+        if not raw_bytes:
+            return 'none'
+        if raw_bytes.find(DUAL_HEADER) != -1:
+            return 'dual'
+        if raw_bytes.find(STEALTH_HEADER) != -1 or raw_bytes.find(LEGACY_HEADER) != -1:
+            return 'single'
+        return 'none'
+    except Exception:
+        return 'none'
