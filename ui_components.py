@@ -1,4 +1,6 @@
 import os
+import re
+import html
 from PyQt5.QtWidgets import QLabel, QWidget, QPushButton, QScrollArea, QMainWindow, QSizePolicy
 from PyQt5.QtCore import Qt, QTimer, QPoint, QEvent
 from PyQt5.QtGui import QPixmap
@@ -77,6 +79,12 @@ def _format_size(b):
     if b < 1024: return f"{b} B"
     if b < 1048576: return f"{b/1024:.1f} KB"
     return f"{b/1048576:.1f} MB"
+
+def convert_links_to_html(text):
+    esc = html.escape(text)
+    link_style = 'style="color: #FFD700; background-color: rgba(15, 15, 15, 0.85); padding: 2px 6px; border-radius: 4px; font-weight: bold; text-decoration: none; border: 1px solid rgba(255, 215, 0, 0.4);"'
+    body = re.sub(r'(https?://[^\s<>()]+[^\s<>().,!?;:])', rf'<a href="\1" {link_style}>\1</a>', esc)
+    return f'<pre style="font-family: \'Consolas\', \'Courier New\', monospace; white-space: pre-wrap; margin: 0;">{body}</pre>'
 
 class CustomHelpTooltip(QLabel):
     def __init__(self, parent=None):
