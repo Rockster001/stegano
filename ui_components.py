@@ -1,6 +1,6 @@
 import os
-from PyQt5.QtWidgets import QLabel, QWidget, QPushButton, QScrollArea, QMainWindow
-from PyQt5.QtCore import Qt, QTimer, QPoint
+from PyQt5.QtWidgets import QLabel, QWidget, QPushButton, QScrollArea, QMainWindow, QSizePolicy
+from PyQt5.QtCore import Qt, QTimer, QPoint, QEvent
 from PyQt5.QtGui import QPixmap
 import numpy as np
 
