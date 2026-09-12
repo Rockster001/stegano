@@ -75,10 +75,6 @@ ZOOM_STEP = 0.15
 ZOOM_MIN = 0.05
 ZOOM_MAX = 5.0
 
-def _format_size(b):
-    if b < 1024: return f"{b} B"
-    if b < 1048576: return f"{b/1024:.1f} KB"
-    return f"{b/1048576:.1f} MB"
 
 def convert_links_to_html(text):
     esc = html.escape(text)
@@ -86,16 +82,6 @@ def convert_links_to_html(text):
     body = re.sub(r'(https?://[^\s<>()]+[^\s<>().,!?;:])', rf'<a href="\1" {link_style}>\1</a>', esc)
     return f'<pre style="font-family: \'Consolas\', \'Courier New\', monospace; white-space: pre-wrap; margin: 0;">{body}</pre>'
 
-class CustomHelpTooltip(QLabel):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFixedSize(400, 120)
-        self.setWordWrap(True)
-        self.setAlignment(Qt.AlignCenter)
-        self.setAttribute(Qt.WA_TransparentForMouseEvents)
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
-        self.setStyleSheet("QLabel { background-color: #1a1a2e; color: #E0E0E0; border: 2px solid #4A85B8; border-radius: 8px; padding: 12px 16px; font-size: 14px; }")
-        self.hide()
 
 class ZoomImageViewer(QMainWindow):
     def __init__(self, image_path, parent=None):
