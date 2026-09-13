@@ -184,3 +184,23 @@ class ZoomImageViewer(QMainWindow):
         elif event.key() == Qt.Key_F: self._fit_window()
         elif event.key() == Qt.Key_Space: self._toggle_fs()
         else: super().keyPressEvent(event)
+
+
+class CustomHelpTooltip(QLabel):
+    def __init__(self):
+        super().__init__()
+        self.setFixedSize(400, 120)
+        self.setWordWrap(True)
+        self.setAlignment(Qt.AlignCenter)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setStyleSheet("QLabel { background-color: #1a1a2e; color: #E0E0E0; border: 2px solid #4A85B8; border-radius: 8px; padding: 12px 16px; font-size: 14px; }")
+        self.hide()
+
+def _format_size(size_bytes):
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    else:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"

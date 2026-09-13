@@ -217,3 +217,35 @@ def detect_message_format(img_path, delim):
         return 'none'
     except Exception:
         return 'none'
+
+STEALTH_HEADER = hashlib.sha256(b"STEGO_MAGIC").digest()
+LEGACY_HEADER = b"STEGO_MAGIC"
+
+def check_image_for_message(img_path, delim):
+    try:
+        img = Image.open(img_path).convert("RGB")
+        arr = np.array(img)
+        flat = arr.reshape(-1) & 1
+        usable_len = (flat.size // 8) * 8
+        if usable_len == 0: return False, False
+        raw_bytes = np.packbits(flat[:usable_len]).tobytes()
+        delim_bytes = delim.encode("utf-8")
+        idx_stealth = raw_bytes.find(STEALTH_HEADER)
+        idx_legacy = raw_bytes.find(LEGACY_HEADER)
+        if idx_stealth != -1:
+            idx = idx_stealth; header_len = len(STEALTH_HEADER)
+        elif idx_legacy != -1:
+            idx = idx_legacy; header_len = len(LEGACY_HEADER)
+        else:
+            return False, False
+        payload_start = idx + header_len
+        d_idx = raw_bytes[payload_start:].find(delim_bytes)
+        if d_idx == -1: return False, False
+        payload_bytes = raw_bytes[payload_start : payload_start + d_idx]
+        try:
+            payload_bytes.decode("utf-8")
+            return True, False
+        except UnicodeDecodeError:
+            return True, True
+    except Exception:
+            return False, False
