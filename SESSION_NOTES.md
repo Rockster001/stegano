@@ -30,14 +30,8 @@
 - Program works + new top line = SUCCESS. Go to "HOW TO FINISH".
 - Program broken = do not save. Ask a browser AI, paste the last error line.
 
-## WHAT TO DO NEXT (Step 3, second half)
-Carry out Step 3 of REFACTOR_PLAN.md, SECOND HALF ONLY: extract the image functions
-(encode_image, decode_image, encode_dual_image, decode_dual_image, and their helpers) into
-steganography_utils.py, and update Stegano.py to import them. Follow the plan's ground rules.
-Change nothing else. Never create, edit, or recreate any .wav, .mp3, or .png file.
-NOTE: if this fails 3 times, STOP. Split smaller: one function per instruction.
-After this: Step 4 (ui_components), Step 5 (workers), Step 6 (tidy) - same routine each time.
+## WHAT TO DO NEXT (Step 6 only)
+Step 6 of REFACTOR_PLAN.md only — the final tidy: remove any dead code (including the unused _format_size function in ui_components.py), verify all imports, test the full program. After Step 6: fix the known dual-password bug (Enter after Pass 2 reverts to Password Required; predates refactor, verified).
 
 ## WHERE THINGS STAND
-Steps 1, 2 and first half of 3 DONE and tested (audio_manager.py, password_utils.py,
-encryption in steganography_utils.py). Program verified working 07/09/2026.
+Steps 1 through 5 COMPLETE and tested (audio_manager, password_utils, steganography_utils including encryption, image functions, and check_image_for_message; workers). Program verified working 07/09/2026.
