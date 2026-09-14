@@ -30,8 +30,8 @@
 - Program works + new top line = SUCCESS. Go to "HOW TO FINISH".
 - Program broken = do not save. Ask a browser AI, paste the last error line.
 
-## WHAT TO DO NEXT (Step 6 only)
-Step 6 of REFACTOR_PLAN.md only — the final tidy: remove any dead code (including the unused _format_size function in ui_components.py), verify all imports, test the full program. After Step 6: fix the known dual-password bug (Enter after Pass 2 reverts to Password Required; predates refactor, verified).
+## WHAT TO DO NEXT
+Fix the dual-password bug: when decoding a dual-layer message, pressing Enter after typing Password 2 reverts to status 'Password Required' instead of proceeding (same failure when encoding to a virgin image with Pass 2). Bug predates the refactor — verified by testing the pre-refactor version. Territory: Enter-key handling and decode-trigger flow in Stegano.py's SteganographyApp class. Approach: investigate first, change nothing until diagnosis is confirmed.
 
 ## WHERE THINGS STAND
-Steps 1 through 5 COMPLETE and tested (audio_manager, password_utils, steganography_utils including encryption, image functions, and check_image_for_message; workers). Program verified working 07/09/2026.
+All 6 refactoring steps COMPLETE and vaulted as of today. Program runs clean. Known issue: the Pass 2 dual-password bug above — the only remaining defect. Next: investigate and fix it.
