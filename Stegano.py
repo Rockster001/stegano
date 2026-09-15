@@ -960,7 +960,7 @@ class SteganographyApp(QMainWindow):
         self.pwd_input2.setPlaceholderText("Pass 2")
         self.pwd_input2.setEchoMode(QLineEdit.Password)
         self.pwd_input2.setFixedWidth(110)
-        self.pwd_input2.returnPressed.connect(self._attempt_decode)
+        self.pwd_input2.returnPressed.connect(self._on_pass2_enter)
         self.pwd_input2.textChanged.connect(self._on_pass2_changed)
         controls.addWidget(self.pwd_input2)
         self._register_tooltip(self.pwd_input2, "Optional password field.")
@@ -1151,6 +1151,20 @@ class SteganographyApp(QMainWindow):
                 self._currently_shown_layer = 1
         self._update_counter()
 
+    def _on_pass2_enter(self):
+        if self.worker_running:
+            return
+        decoded = self.text_area.isReadOnly() and self._currently_shown_layer >= 1
+        pass1 = self.pwd_input.text()
+        pass2 = self.pwd_input2.text()
+        if decoded:
+            if pass2:
+                self._attempt_decode()
+        else:
+            if not pass1:
+                self._status('Enter Pass 1 to encode.', 'error')
+            elif pass2:
+                self._encode_msg()
     def _attempt_decode(self):
         if self.worker_running: return
         if not self.current_image_path or not os.path.exists(self.current_image_path): return
