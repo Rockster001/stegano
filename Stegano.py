@@ -1275,19 +1275,14 @@ class SteganographyApp(QMainWindow):
             self.pwd_input2.clear()
             self._reset_dual_compose_state()
         else:
-            self._editing_layer = self._currently_shown_layer
-            if self._editing_layer == 2:
-                self._layer2_active = True
-                self._message2_buffer = self.text_area.toPlainText()
-                # The real Layer 1 text was already known (cached) the
-                # moment Layer 2 was revealed - carry it into the edit
-                # buffer too, so switching to the Pass 1 field while
-                # editing shows the real message instead of leaving it
-                # blank/stale.
-                self._message1_buffer = self._decoded_layer1_message
+            if self._currently_shown_layer == 1:
+                self._editing_layer = 2
             else:
-                self._layer2_active = False
-                self._message1_buffer = self.text_area.toPlainText()
+                self._editing_layer = self._currently_shown_layer
+            self._layer2_active = True
+            self._message1_buffer = self._decoded_layer1_message
+            self._message2_buffer = self.text_area.toPlainText()
+        self._update_pass_field_highlight()
             self._update_pass_field_highlight()
 
     def _handle_thumb_single_click(self):
