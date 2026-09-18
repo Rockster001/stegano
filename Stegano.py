@@ -1167,23 +1167,6 @@ class SteganographyApp(QMainWindow):
         # Otherwise, return
         else:
             return
-    def _on_pass2_enter(self):
-        if self.worker_running:
-            return
-        # If in decode-display mode (text_area is read-only and layer >= 1) and Pass 2 is non-empty
-        if self.text_area.isReadOnly() and self._currently_shown_layer >= 1 and self.pwd_input2.text():
-            self._attempt_decode()
-        # If in encode mode (text_area is not read-only)
-        elif not self.text_area.isReadOnly():
-            if not self.pwd_input.text():
-                self._status('Enter Pass 1 to encode.', 'error')
-            elif self.pwd_input2.text():
-                # Do nothing, encoding happens via Save button
-                pass
-        # Otherwise, return
-        else:
-            return
-
     def _attempt_decode(self):
         if self.worker_running: return
         if not self.current_image_path or not os.path.exists(self.current_image_path): return
