@@ -1138,17 +1138,6 @@ class SteganographyApp(QMainWindow):
         self._update_counter()
 
     def _on_pass2_changed(self, text):
-        if not self.text_area.isReadOnly():
-            if text and not self._layer2_active:
-                self._layer2_active = True
-                current_layer1_text = self.text_area.toPlainText() if self._editing_layer == 1 else self._message1_buffer
-                self._message2_buffer = current_layer1_text
-                self._switch_to_layer(2)
-        else:
-            if not text and self._currently_shown_layer == 2 and self._decoded_layer1_message:
-                self.original_message = self._decoded_layer1_message
-                self.text_area.setHtml(convert_links_to_html(self._decoded_layer1_message))
-                self._currently_shown_layer = 1
         self._update_counter()
 
     def _on_pass2_enter(self):
