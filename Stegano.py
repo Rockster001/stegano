@@ -1283,7 +1283,6 @@ class SteganographyApp(QMainWindow):
             self._message1_buffer = self._decoded_layer1_message
             self._message2_buffer = self.text_area.toPlainText()
         self._update_pass_field_highlight()
-            self._update_pass_field_highlight()
 
     def _handle_thumb_single_click(self):
         if self.current_image_path and os.path.exists(self.current_image_path): self._show_full_img()
