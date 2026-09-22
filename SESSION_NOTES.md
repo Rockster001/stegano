@@ -31,7 +31,12 @@
 - Program broken = do not save. Ask a browser AI, paste the last error line.
 
 ## WHAT TO DO NEXT
-Fix the dual-password bug: when decoding a dual-layer message, pressing Enter after typing Password 2 reverts to status 'Password Required' instead of proceeding (same failure when encoding to a virgin image with Pass 2). Bug predates the refactor — verified by testing the pre-refactor version. Territory: Enter-key handling and decode-trigger flow in Stegano.py's SteganographyApp class. Approach: investigate first, change nothing until diagnosis is confirmed.
+## RELEASE CHECKLIST (for the executable/release stage)
+- Ship starter pack of virgin images (curated, variety of sizes)
+- First-run: seed C:\Users<name>\Documents\Stegano\Images with the starters
+- Select Image dialog: first-run default = that folder (lastDir memory unchanged after first selection)
+- Ensure NO dev/test files ship in the release package
+- Include requirements.txt and README (the shareability kit)
 
 ## WHERE THINGS STAND
-All 6 refactoring steps COMPLETE and vaulted as of today. Program runs clean. Known issue: the Pass 2 dual-password bug above — the only remaining defect. Next: investigate and fix it.
+All 6 refactoring steps COMPLETE and vaulted as of today. Program runs clean. The dual-password feature is FIXED and verified end-to-end (quiz scenario passed). Remaining known work: this release checklist, plus a cleanup pass (vault contents, test images).
