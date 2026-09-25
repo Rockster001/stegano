@@ -1225,7 +1225,7 @@ class SteganographyApp(QMainWindow):
                     self._switch_to_layer(1)
                     if not self.text_area.isReadOnly():
                         self._update_pass_field_highlight()
-                elif obj is self.pwd_input2 and self._layer2_active:
+                elif obj is self.pwd_input2 and (self._layer2_active or self.text_area.isReadOnly()):
                     self._switch_to_layer(2)
                     if not self.text_area.isReadOnly():
                         self._update_pass_field_highlight()
