@@ -938,7 +938,7 @@ class SteganographyApp(QMainWindow):
         self.pwd_input.returnPressed.connect(self._attempt_decode)
         self.pwd_input.textChanged.connect(self._on_password_changed)
         controls.addWidget(self.pwd_input)
-        self._register_tooltip(self.pwd_input, "Enter a password to decrypt the hidden message. Press Enter to apply. Leave blank for unencrypted messages.")
+        self._register_tooltip(self.pwd_input, "Enter a password to decrypt the hidden message. Press Enter to apply. Leave blank for unencrypted messages. Double-click to select a saved password.")
         self.pwd_show_btn = QPushButton("👁")
         self.pwd_show_btn.setFixedWidth(30)
         self.pwd_show_btn.setCheckable(True)
@@ -955,6 +955,7 @@ class SteganographyApp(QMainWindow):
         self.pwd_memory_btn.clicked.connect(self._show_saved_passwords_dialog)
         controls.addWidget(self.pwd_memory_btn)
         self._register_tooltip(self.pwd_memory_btn, "View and manage saved passwords. Passwords are automatically saved when used.")
+        self.pwd_memory_btn.hide()
         controls.addSpacing(10)
         self.pwd_input2 = QLineEdit()
         self.pwd_input2.setPlaceholderText("Pass 2")
@@ -963,7 +964,7 @@ class SteganographyApp(QMainWindow):
         self.pwd_input2.returnPressed.connect(self._on_pass2_enter)
         self.pwd_input2.textChanged.connect(self._on_pass2_changed)
         controls.addWidget(self.pwd_input2)
-        self._register_tooltip(self.pwd_input2, "Optional password field.")
+        self._register_tooltip(self.pwd_input2, "Optional password field. Double-click to select a saved password.")
         self.pwd_show_btn2 = QPushButton("👁")
         self.pwd_show_btn2.setFixedWidth(30)
         self.pwd_show_btn2.setCheckable(True)
@@ -1221,6 +1222,11 @@ class SteganographyApp(QMainWindow):
                     self._switch_to_layer(2)
                     if not self.text_area.isReadOnly():
                         self._update_pass_field_highlight()
+            elif event.type() == QEvent.MouseButtonDblClick and event.button() == Qt.LeftButton:
+                self.audio.play_sfx('click')
+                self._last_focused_pwd_field = obj
+                self._show_saved_passwords_dialog()
+                return True
         if self.help_mode_active and obj in self._tooltip_map:
             if event.type() == QEvent.Enter:
                 self.help_tooltip.setText(self._tooltip_map[obj])
