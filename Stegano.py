@@ -373,6 +373,7 @@ class SteganographyApp(QMainWindow):
         self._click_timer.timeout.connect(self._handle_thumb_single_click)
         self.active_viewer = None
         self._saved_passwords = self._load_saved_passwords()
+        self._decoded_layer2_message = ""
         self.toast_notification = ToastNotification(self)
         self.loading_spinner = LoadingSpinner(self)
         self.password_strength_indicator = PasswordStrengthMeter(self)
@@ -1125,16 +1126,21 @@ class SteganographyApp(QMainWindow):
         self._clear_pass_field_highlight()
 
     def _switch_to_layer(self, target):
-        if self.text_area.isReadOnly():
-            return
         if self._editing_layer == target:
             return
-        if self._editing_layer == 1:
-            self._message1_buffer = self.text_area.toPlainText()
-        else:
-            self._message2_buffer = self.text_area.toPlainText()
+        if not self.text_area.isReadOnly():
+            if self._editing_layer == 1:
+                self._message1_buffer = self.text_area.toPlainText()
+            else:
+                self._message2_buffer = self.text_area.toPlainText()
         self._editing_layer = target
-        self.text_area.setPlainText(self._message1_buffer if target == 1 else self._message2_buffer)
+        if self.text_area.isReadOnly():
+            if target == 1:
+                self.text_area.setHtml(convert_links_to_html(self._decoded_layer1_message))
+            else:
+                self.text_area.setHtml(convert_links_to_html(self._decoded_layer2_message))
+        else:
+            self.text_area.setPlainText(self._message1_buffer if target == 1 else self._message2_buffer)
         self._update_pass_field_highlight()
         self._update_counter()
 
@@ -1174,6 +1180,7 @@ class SteganographyApp(QMainWindow):
         if msg and layer > 0:
             self.original_message = msg
             self._decoded_layer1_message = layer1_msg
+            self._decoded_layer2_message = msg
             self._currently_shown_layer = layer
             self.watermark.setText("DECODED")
             self._update_watermark()
