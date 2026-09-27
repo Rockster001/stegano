@@ -936,7 +936,7 @@ class SteganographyApp(QMainWindow):
         self.pwd_input.setPlaceholderText("Password")
         self.pwd_input.setEchoMode(QLineEdit.Password)
         self.pwd_input.setFixedWidth(140)
-        self.pwd_input.returnPressed.connect(self._attempt_decode)
+        self.pwd_input.returnPressed.connect(self._on_pass1_enter)
         self.pwd_input.textChanged.connect(self._on_password_changed)
         controls.addWidget(self.pwd_input)
         self._register_tooltip(self.pwd_input, "Enter a password to decrypt the hidden message. Press Enter to apply. Leave blank for unencrypted messages. Double-click to select a saved password.")
@@ -1164,6 +1164,11 @@ class SteganographyApp(QMainWindow):
         else:
             return
 
+    def _on_pass1_enter(self):
+        if self.worker_running:
+            return
+        if self.text_area.isReadOnly():
+            self._attempt_decode()
     def _attempt_decode(self):
         if self.worker_running: return
         if not self.current_image_path or not os.path.exists(self.current_image_path): return
