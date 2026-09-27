@@ -57,3 +57,12 @@ saved-passwords dialog (the key icon button has been hidden).
 All 6 refactoring steps COMPLETE. Dual-password feature FULLY WORKING and verified:
 dual saves work, both layers decode, un-reveal works, tab switching works in decode mode.
 Test files belong in C:\Dev\SteganoTest. Program verified working 24/09/2026.
+
+## KNOWN DEFECT: Save blocked after failed decode (discovered 26/09/2026)
+Reproduction: load encoded image, decode with Pass 1, type a NEW password into
+Pass 1, press Enter (decode fails as designed), click message window (Encode mode),
+type new password in Pass 1, press Enter (inert, as designed), click Save.
+RESULT: Save does nothing. WORKAROUND: click Cancel first, then Save works.
+Suspected cause: failed decode corrupts editing state (_editing_layer or buffers);
+Cancel repairs it. Likely affects Pass 2 identically (untested).
+Status: DIAGNOSED IN PRINCIPLE - fix pending next session.
