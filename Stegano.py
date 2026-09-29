@@ -1216,12 +1216,10 @@ class SteganographyApp(QMainWindow):
             self.edit_btn.hide()
             self.copy_btn.hide()
             self._status("Incorrect password or no message found.", "error")
-            self.audio.play_sfx('error')
 
     def _on_decode_error(self, e):
         self._set_worker(False)
         self._status(f"Error: {e}", "error")
-        self.audio.play_sfx('error')
 
     def eventFilter(self, obj, event):
         if hasattr(self, 'pwd_input') and hasattr(self, 'pwd_input2') and obj in (self.pwd_input, self.pwd_input2):
@@ -1376,7 +1374,6 @@ class SteganographyApp(QMainWindow):
         is_valid, error_msg = self._validate_file_size(p)
         if not is_valid:
             self._status(error_msg, "error")
-            self.audio.play_sfx('error')
             return
         try:
             if self.active_viewer and self.active_viewer.isVisible(): self.active_viewer.close()
@@ -1448,7 +1445,6 @@ class SteganographyApp(QMainWindow):
     def _on_image_load_error(self, e):
         self._set_worker(False)
         self._status(f"Error loading image: {e}", "error")
-        self.audio.play_sfx('error')
 
     def _update_counter(self):
         if not hasattr(self, 'capacity_progress_bar'):
@@ -1484,8 +1480,38 @@ class SteganographyApp(QMainWindow):
 
     def _status(self, m, t="info"):
         colors = {'error': '#FF4444', 'success': '#44FF44', 'info': '#FFFFFF'}
-        self.st_lbl.setStyleSheet(f"color: {colors.get(t, '#FFFFFF')}; font-size: 13px;")
+        color = colors.get(t, '#FFFFFF')
         self.st_lbl.setText(m)
+        for attr in ('_status_pulse_timer', '_status_revert_timer'):
+            timer = getattr(self, attr, None)
+            if timer is not None:
+                timer.stop()
+        if t != 'error':
+            self.st_lbl.setStyleSheet(f"color: {color}; font-size: 13px;")
+            return
+        self.audio.play_sfx('error')
+        self._status_pulse_count = 0
+        self._status_pulse_timer = QTimer(self)
+        self._status_pulse_timer.setInterval(120)
+
+        def _pulse():
+            self._status_pulse_count += 1
+            if self._status_pulse_count > 12:
+                self._status_pulse_timer.stop()
+                self.st_lbl.setStyleSheet("color: #FF4444; font-size: 13px;")
+                return
+            if self._status_pulse_count % 2 == 1:
+                self.st_lbl.setStyleSheet("color: #FFFFFF; font-size: 13px; font-weight: bold;")
+            else:
+                self.st_lbl.setStyleSheet("color: #992222; font-size: 13px;")
+
+        self._status_pulse_timer.timeout.connect(_pulse)
+        self._status_pulse_timer.start()
+        self._status_revert_timer = QTimer(self)
+        self._status_revert_timer.setSingleShot(True)
+        self._status_revert_timer.timeout.connect(
+            lambda: self.st_lbl.setStyleSheet("color: #FFFFFF; font-size: 13px;"))
+        self._status_revert_timer.start(4000)
 
     def _set_worker(self, r):
         self._cleanup_workers()
@@ -1581,7 +1607,6 @@ class SteganographyApp(QMainWindow):
 
     def _on_encode_error(self, e):
         self._status(f"Error: {e}", "error")
-        self.audio.play_sfx('error')
         self._animate_error()
         self._set_worker(False)
 
