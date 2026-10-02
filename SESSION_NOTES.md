@@ -1,4 +1,4 @@
-# SESSION_NOTES.md
+﻿# SESSION_NOTES.md
 
 ## HOW TO START A WORK SESSION (follow top to bottom, in order)
 
@@ -66,3 +66,24 @@ RESULT: Save does nothing. WORKAROUND: click Cancel first, then Save works.
 Suspected cause: failed decode corrupts editing state (_editing_layer or buffers);
 Cancel repairs it. Likely affects Pass 2 identically (untested).
 Status: DIAGNOSED IN PRINCIPLE - fix pending next session.
+
+## Session 29/09/2026 — Error-status visibility fix
+WHAT WAS DONE:
+- Diagnosed the documented "Save unresponsive after failed decode" defect. Root cause: the save was actually REFUSING with a status-bar message ("Message 2 has content - add a Pass 2 password before saving.") that was effectively invisible to the user. Not a logic defect.
+- Fix: _status() in Stegano.py now treats error-type messages as alerts — one error sound (played centrally) plus a ~1.2s pulse of the status text (bold bright-white alternating with dim red, brightness-based for colour-blind accessibility), settling in dim red for ~4 seconds. Info/success messages unchanged.
+- Removed five now-duplicate self.audio.play_sfx('error') calls that sat directly next to error-status messages (in _on_decode_result, _on_decode_error, the file-size validation block, _on_image_load_error, _on_encode_error) to prevent double-beeps.
+- Stegano.bat now launches Aider with --no-auto-commits (backup at Stegano.bat.bak); Aider no longer self-commits.
+
+TESTED (by user, live):
+- Original failing scenario: the previously-silent Save refusal now flashes and beeps clearly.
+- Clean-session and dirty-session (post failed-decode) saves of virgin images both behave correctly.
+- Post-save resting state (message shown, passwords cleared, Save hidden) confirmed as designed behaviour.
+- Syntax check passed; committed via save.bat as 5c7d996.
+
+OPEN ITEMS:
+1. UNREPRODUCED: one occurrence of "Message 2 has content" warning on a virgin JPEG (load -> type -> Pass 1 -> Save). Two controlled reproduction attempts (clean session; dirty session after failed decode) both FAILED to reproduce. Likely trigger: stray focus on Pass 2 (eventFilter silently switches message slots on password-field focus — see lines ~1224-1235). If it recurs, capture the exact click sequence before touching anything.
+2. DESIGN DECISION PENDING (user request): saving should arguably NOT clear passwords/reset workflow state — user considers a normal save a non-event, not a security event. Current behaviour unchanged; needs design discussion (possibly a settings toggle).
+3. FUTURE: password-replacement flow (decode with old password, enter NEW password, save to re-encrypt without a re-decode attempt). Currently a changed password triggers a doomed re-decode that wipes the decoded message.
+4. FUTURE (accessibility): static colour-only success/error distinction may be hard for colour-blind users; consider icons or paired sounds.
+5. Housekeeping: leftover patch script fix_enter.py in project folder is not part of the app and can be deleted.
+
