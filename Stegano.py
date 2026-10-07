@@ -926,7 +926,11 @@ class SteganographyApp(QMainWindow):
 
     def _update_pass_field_highlight(self):
         active_style = "border: 2px solid #FFD700;"
-        if self._editing_layer == 2 and self._layer2_active:
+        if self.text_area.isReadOnly():
+            active_layer = self._currently_shown_layer
+        else:
+            active_layer = self._editing_layer
+        if active_layer == 2:
             self.pwd_input.setStyleSheet("")
             self.pwd_input2.setStyleSheet(active_style)
         else:
@@ -951,6 +955,7 @@ class SteganographyApp(QMainWindow):
             else:
                 self._message2_buffer = self.text_area.toPlainText()
         self._editing_layer = target
+        self._currently_shown_layer = target
         if self.text_area.isReadOnly():
             if target == 1:
                 self.text_area.setHtml(convert_links_to_html(self._decoded_layer1_message))
@@ -1022,6 +1027,7 @@ class SteganographyApp(QMainWindow):
             else: self._status("Message found.", "success")
             self.audio.play_sfx('success')
             self._update_counter()
+            self._update_pass_field_highlight()
         else:
             self.original_message = ""
             self._decoded_layer1_message = ""
