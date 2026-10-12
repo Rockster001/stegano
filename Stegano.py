@@ -1054,6 +1054,8 @@ class SteganographyApp(QMainWindow):
                         self._update_pass_field_highlight()
                 elif obj is self.pwd_input2 and (self._layer2_active or self.text_area.isReadOnly()):
                     self._switch_to_layer(2)
+                    if self.text_area.isReadOnly() and self._decoded_layer2_message:
+                        self.text_area.setHtml(convert_links_to_html(self._decoded_layer2_message))
                     if not self.text_area.isReadOnly():
                         self._update_pass_field_highlight()
             elif event.type() == QEvent.MouseButtonDblClick and event.button() == Qt.LeftButton:
@@ -1116,12 +1118,14 @@ class SteganographyApp(QMainWindow):
             self._reset_dual_compose_state()
         else:
             if self._currently_shown_layer == 1:
-                self._editing_layer = 2
+                self._editing_layer = 1
             else:
-                self._editing_layer = self._currently_shown_layer
+                self._editing_layer = 2
             self._layer2_active = True
-            self._message1_buffer = self._decoded_layer1_message
-            self._message2_buffer = self.text_area.toPlainText()
+            if self._editing_layer == 1:
+                self._message1_buffer = self.text_area.toPlainText()
+            else:
+                self._message2_buffer = self.text_area.toPlainText()
         self._update_pass_field_highlight()
 
     def _handle_thumb_single_click(self):
@@ -1359,7 +1363,7 @@ class SteganographyApp(QMainWindow):
         pass1 = self.pwd_input.text()
         pass2 = self.pwd_input2.text()
         m2 = self._message2_buffer.strip()
-        if m2 and not pass2:
+        if m2 and not pass2 and self._editing_layer == 2:
             return self._status("Message 2 has content - add a Pass 2 password before saving.", "error")
         is_dual = bool(pass2)
         if pass1:
