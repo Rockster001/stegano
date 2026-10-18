@@ -202,12 +202,15 @@ class SteganographyApp(QMainWindow):
         self.capacity_percent_label = QLabel("0%", styleSheet="color:#ccc; min-width:32px;")
         self._previous_music_volume = 60
         self._is_muted = False
+        self._carry_composition = True
         self.setAcceptDrops(True)
         self._init_ui()
         QTimer.singleShot(500, self._update_watermark)
         self._restore_window_state()
 
     def _has_unsaved_changes(self):
+        if self._has_live_composition():
+            return True
         if not hasattr(self, 'save_btn') or not self.save_btn.isVisible():
             return False
         current_layer1 = (self.text_area.toPlainText() if self._editing_layer == 1 else self._message1_buffer).strip()
@@ -217,6 +220,14 @@ class SteganographyApp(QMainWindow):
         if current_layer2:
             return True
         return current_layer1 != self.original_message
+
+    def _has_live_composition(self):
+        if self._editing_layer not in (1, 2):
+            return False
+        text_content = self.text_area.toPlainText().strip()
+        pwd1_content = self.pwd_input.text()
+        pwd2_content = self.pwd_input2.text()
+        return bool(text_content or pwd1_content or pwd2_content)
 
     def closeEvent(self, event):
         if self._has_unsaved_changes():
@@ -687,6 +698,8 @@ class SteganographyApp(QMainWindow):
         self._register_tooltip(self.thumb, "Preview of the loaded image. Click to view full size. Double-click to load a new image. You can also drag-and-drop an image here.")
         self.thumb.setCursor(Qt.PointingHandCursor)
         self.thumb.installEventFilter(self)
+        self.thumb.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.thumb.customContextMenuRequested.connect(self._show_thumb_menu)
         bc = QVBoxLayout()
         self.sel_btn = QPushButton("Select Image")
         self.sel_btn.clicked.connect(self._select_image)
@@ -1135,6 +1148,24 @@ class SteganographyApp(QMainWindow):
     def _handle_thumb_double_click(self):
         self._select_image()
 
+    def _show_thumb_menu(self):
+        if self.worker_running:
+            return
+        menu = QMenu(self)
+        load_action = QAction("Load Image (start fresh)", self)
+        load_action.triggered.connect(self._select_image)
+        menu.addAction(load_action)
+        replace_action = QAction("Replace Image (keep message)", self)
+        replace_action.triggered.connect(self._replace_image)
+        menu.addAction(replace_action)
+        show_action = QAction("Show Image", self)
+        if self.current_image_path and os.path.exists(self.current_image_path):
+            show_action.triggered.connect(self._show_full_img)
+        else:
+            show_action.triggered.connect(lambda: self._status("No image loaded", "error"))
+        menu.addAction(show_action)
+        menu.exec_(QCursor.pos())
+
     def _toggle_edit(self):
         self._enter_edit_mode()
 
@@ -1188,9 +1219,17 @@ class SteganographyApp(QMainWindow):
         self.settings.setValue("lastDir", os.path.dirname(p))
         self._load_image(p)
 
-    def _load_image(self, p):
+    def _replace_image(self):
         if self.worker_running: return
-        if self._has_unsaved_changes():
+        self.audio.play_sfx('click')
+        p, _ = QFileDialog.getOpenFileName(self, "Replace Image", self.settings.value("lastDir", os.path.dirname(os.path.abspath(__file__))), "Images (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.webp)")
+        if not p: return
+        self.settings.setValue("lastDir", os.path.dirname(p))
+        self._load_image(p, carry_composition=True)
+
+    def _load_image(self, p, carry_composition=False):
+        if self.worker_running: return
+        if not carry_composition and self._has_unsaved_changes():
             reply = QMessageBox.question(
                 self, "Unsaved Message",
                 "Loading a new image will discard the message you haven't saved yet. Continue?",
@@ -1207,6 +1246,7 @@ class SteganographyApp(QMainWindow):
         except RuntimeError: pass
         self.active_viewer = None
         self._pending_load_path = p
+        self._carry_composition = carry_composition
         self._set_worker(True)
         self.loaderWorker = ImageLoadWorker(p, self.delimiter)
         self.loaderWorker.loaded.connect(self._on_image_loaded)
@@ -1218,55 +1258,65 @@ class SteganographyApp(QMainWindow):
         self._set_worker(False)
         self.current_image_path = p
         self.available_capacity_bits = result['capacity_bits']
-        self.pwd_input.clear()
-        self.pwd_input2.clear()
-        self._reset_dual_compose_state()
+        
+        # Preserve composition if live and carry_composition is True
+        if self._has_live_composition() and self._carry_composition:
+            self._status("Image loaded — your unsaved message has been carried over to this image.", "info")
+        else:
+            self.pwd_input.clear()
+            self.pwd_input2.clear()
+            self._reset_dual_compose_state()
+        
         with _SuppressStderr():
             thumb_pixmap = QPixmap(p)
         self.thumb.setPixmap(thumb_pixmap.scaled(THUMBNAIL_SIZE * 2, THUMBNAIL_SIZE * 2, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         self.thumb.setText("")
         self.view_btn.setEnabled(True)
         self.meta_display.setHtml(self._extract_metadata(p))
-        has_message = result['has_message']
-        is_encrypted = result['is_encrypted']
-        if has_message:
-            if is_encrypted:
+        
+        # Only process embedded message if no live composition or not carrying composition
+        if not self._has_live_composition() or not self._carry_composition:
+            has_message = result['has_message']
+            is_encrypted = result['is_encrypted']
+            if has_message:
+                if is_encrypted:
+                    self.original_message = ""
+                    self.watermark.setText("PASSWORD REQUIRED")
+                    self._update_watermark()
+                    self.text_area.clear()
+                    self.text_area.setReadOnly(True)
+                    self.edit_btn.hide()
+                    self.copy_btn.hide()
+                    self.save_btn.hide()
+                    self.cancel_btn.hide()
+                    self._status("Encrypted message detected. Enter password and press Enter to decode.", "info")
+                    self.pwd_input.setFocus()
+                else:
+                    msg = result['message']
+                    self.original_message = msg
+                    self.watermark.setText("DECODED")
+                    self._update_watermark()
+                    self.text_area.setHtml(convert_links_to_html(msg))
+                    self.text_area.setReadOnly(True)
+                    self.edit_btn.show()
+                    self.copy_btn.show()
+                    self.save_btn.hide()
+                    self.cancel_btn.hide()
+                    self._status("Message found (unencrypted).", "success")
+                    self.audio.play_sfx('success')
+            else:
                 self.original_message = ""
-                self.watermark.setText("PASSWORD REQUIRED")
+                self.watermark.setText("ENCODE")
                 self._update_watermark()
                 self.text_area.clear()
-                self.text_area.setReadOnly(True)
+                self.text_area.setReadOnly(False)
+                self.text_area.setFocus()
                 self.edit_btn.hide()
                 self.copy_btn.hide()
-                self.save_btn.hide()
-                self.cancel_btn.hide()
-                self._status("Encrypted message detected. Enter password and press Enter to decode.", "info")
-                self.pwd_input.setFocus()
-            else:
-                msg = result['message']
-                self.original_message = msg
-                self.watermark.setText("DECODED")
-                self._update_watermark()
-                self.text_area.setHtml(convert_links_to_html(msg))
-                self.text_area.setReadOnly(True)
-                self.edit_btn.show()
-                self.copy_btn.show()
-                self.save_btn.hide()
-                self.cancel_btn.hide()
-                self._status("Message found (unencrypted).", "success")
-                self.audio.play_sfx('success')
-        else:
-            self.original_message = ""
-            self.watermark.setText("ENCODE")
-            self._update_watermark()
-            self.text_area.clear()
-            self.text_area.setReadOnly(False)
-            self.text_area.setFocus()
-            self.edit_btn.hide()
-            self.copy_btn.hide()
-            self.save_btn.show()
-            self.cancel_btn.show()
-            self._status("Ready to encode", "info")
+                self.save_btn.show()
+                self.cancel_btn.show()
+                self._status("Ready to encode", "info")
+        
         self._update_counter()
 
     def _on_image_load_error(self, e):
