@@ -1,0 +1,716 @@
+        controls.addWidget(self.pwd_show_btn2)
+        self._register_tooltip(self.pwd_show_btn2, "Show or hide this password as you type it")
+        controls.addStretch()
+        controls.addWidget(QLabel("Password:", styleSheet="color:#999; font-size:12px;"))
+        controls.addWidget(self.password_strength_indicator)
+        self._register_tooltip(self.password_strength_indicator, "Password strength indicator")
+        controls.addSpacing(10)
+        controls.addWidget(QLabel("Capacity:", styleSheet="color:#999; font-size:12px;"))
+        controls.addWidget(self.capacity_progress_bar)
+        controls.addWidget(self.capacity_percent_label)
+        self._register_tooltip(self.capacity_progress_bar, "Capacity usage indicator")
+        controls.addWidget(self.loading_spinner)
+        controls.addSpacing(15)
+        self.copy_btn = QPushButton("ðŸ“‹ Copy")
+        self.copy_btn.clicked.connect(self._copy_message)
+        self._retain_size_when_hidden(self.copy_btn)
+        self.copy_btn.hide()
+        controls.addWidget(self.copy_btn)
+        self._register_tooltip(self.copy_btn, "Copy the decoded message to your clipboard.")
+        self.edit_btn = QPushButton("âœï¸ Edit")
+        self.edit_btn.clicked.connect(self._toggle_edit)
+        self._retain_size_when_hidden(self.edit_btn)
+        self.edit_btn.hide()
+        controls.addWidget(self.edit_btn)
+        self._register_tooltip(self.edit_btn, "Unlock the decoded message for editing.")
+        self.save_btn = QPushButton("ðŸ’¾ Save")
+        self.save_btn.clicked.connect(self._encode_msg)
+        self._retain_size_when_hidden(self.save_btn)
+        self.save_btn.hide()
+        controls.addWidget(self.save_btn)
+        self._register_tooltip(self.save_btn, "Encode your message into the image and save as a new file. (Ctrl+S)")
+        self.cancel_btn = QPushButton("âŒ Cancel")
+        self.cancel_btn.clicked.connect(self._cancel_edit)
+        self._retain_size_when_hidden(self.cancel_btn)
+        self.cancel_btn.hide()
+        controls.addWidget(self.cancel_btn)
+        self._register_tooltip(self.cancel_btn, "Discard changes and return to view mode.")
+        ws_layout.addLayout(controls, 1, 0)
+        ml.addWidget(self.ws_frame)
+        sf = QFrame()
+        sf.setObjectName("Card")
+        sl = QVBoxLayout(sf)
+        sl.setContentsMargins(15, 8, 15, 8)
+        status_row = QHBoxLayout()
+        self.st_lbl = QLabel("Ready", objectName="StatusText")
+        status_row.addWidget(self.st_lbl)
+        self._register_tooltip(self.st_lbl, "Shows the current operation status and results.")
+        status_row.addStretch()
+        # No size grip: with the window now permanently locked to the
+        # screen's exact size, a resize handle would be purely decorative
+        # and non-functional - removed rather than left as a dead affordance.
+        sl.addLayout(status_row)
+        ml.addWidget(sf)
+        self.move(QApplication.primaryScreen().geometry().center() - self.rect().center())
+        QTimer.singleShot(200, self._update_watermark)
+        # No showNormal() here - _restore_window_state() runs right after
+        # this and always goes fullscreen, so calling showNormal() first
+        # was a redundant step that got immediately overridden anyway.
+
+    def _handle_save_shortcut(self):
+        if self.save_btn.isVisible() and not self.worker_running:
+            self._encode_msg()
+
+    def _on_slider_changed(self, value):
+        self.audio.set_music_volume(value)
+        self.mus_vol_label.setText(f"{value}%")
+        if value == 0:
+            if not self._is_muted:
+                self._is_muted = True
+                self.music_mute_btn.setText("ðŸ”‡ Music")
+        else:
+            if self._is_muted:
+                self._is_muted = False
+                self.music_mute_btn.setText("ðŸŽµ Music")
+            self._previous_music_volume = value
+
+    def _toggle_mute(self):
+        self.audio.play_sfx('click')
+        if self._is_muted:
+            self._is_muted = False
+            restore_vol = self._previous_music_volume if self._previous_music_volume > 0 else 60
+            self.mus_vol.blockSignals(True)
+            self.mus_vol.setValue(restore_vol)
+            self.mus_vol.blockSignals(False)
+            self.audio.set_music_volume(restore_vol)
+            self.mus_vol_label.setText(f"{restore_vol}%")
+            self.music_mute_btn.setText("ðŸŽµ Music")
+        else:
+            self._is_muted = True
+            self._previous_music_volume = self.mus_vol.value()
+            self.mus_vol.blockSignals(True)
+            self.mus_vol.setValue(0)
+            self.mus_vol.blockSignals(False)
+            self.audio.set_music_volume(0)
+            self.mus_vol_label.setText("0%")
+            self.music_mute_btn.setText("ðŸ”‡ Music")
+
+    def _toggle_sfx(self):
+        self.audio.play_sfx('click')
+        is_enabled = self.audio.toggle_sfx()
+        if is_enabled: self.sfx_btn.setText("ðŸ”Š SFX")
+        else: self.sfx_btn.setText("ðŸ”‡ SFX")
+
+    def _update_clock(self):
+        self.clock_label.setText(datetime.now().strftime("%H:%M:%S"))
+
+    def _copy_message(self):
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self.text_area.toPlainText())
+        self._status("Message copied to clipboard!", "success")
+        self.audio.play_sfx('success')
+
+    def _clear_password(self):
+        self.audio.play_sfx('click')
+        target = self._last_focused_pwd_field if self._last_focused_pwd_field in (self.pwd_input, self.pwd_input2) else self.pwd_input
+        target.clear()
+
+    def _toggle_password_visibility(self):
+        self._toggle_password_field_visibility(self.pwd_input, self.pwd_show_btn)
+
+    def _toggle_password_field_visibility(self, field, btn):
+        if btn.isChecked():
+            field.setEchoMode(QLineEdit.Normal)
+        else:
+            field.setEchoMode(QLineEdit.Password)
+
+    def _on_password_changed(self, text):
+        self.password_strength_indicator.update_strength(text)
+        self._update_counter()
+
+    def _estimate_encrypted_len(self, raw_len):
+        return estimate_encrypted_payload_len(raw_len)
+
+    def _clear_pass_field_highlight(self):
+        if hasattr(self, 'pwd_input'): self.pwd_input.setStyleSheet("")
+        if hasattr(self, 'pwd_input2'): self.pwd_input2.setStyleSheet("")
+
+    def _update_pass_field_highlight(self):
+        active_style = "border: 2px solid #FFD700;"
+        if self.text_area.isReadOnly():
+            active_layer = self._currently_shown_layer
+        else:
+            active_layer = self._editing_layer
+        if active_layer == 2:
+            self.pwd_input.setStyleSheet("")
+            self.pwd_input2.setStyleSheet(active_style)
+        else:
+            self.pwd_input.setStyleSheet(active_style)
+            self.pwd_input2.setStyleSheet("")
+
+    def _reset_dual_compose_state(self):
+        self._layer2_active = False
+        self._editing_layer = 1
+        self._message1_buffer = ""
+        self._message2_buffer = ""
+        self._decoded_layer1_message = ""
+        self._currently_shown_layer = 0
+        self._clear_pass_field_highlight()
+
+    def _switch_to_layer(self, target):
+        if self._editing_layer == target:
+            return
+        if not self.text_area.isReadOnly():
+            if self._editing_layer == 1:
+                self._message1_buffer = self.text_area.toPlainText()
+            else:
+                self._message2_buffer = self.text_area.toPlainText()
+        self._editing_layer = target
+        self._currently_shown_layer = target
+        if self.text_area.isReadOnly():
+            if target == 1:
+                self.text_area.setHtml(convert_links_to_html(self._decoded_layer1_message))
+            else:
+                self.text_area.setHtml(convert_links_to_html(self._decoded_layer2_message))
+        else:
+            self.text_area.setPlainText(self._message1_buffer if target == 1 else self._message2_buffer)
+        self._update_pass_field_highlight()
+        self._update_counter()
+
+    def _on_pass2_changed(self, text):
+        self._update_counter()
+
+    def _on_pass2_enter(self):
+        if self.worker_running:
+            return
+        # If in decode-display mode (text_area is read-only and layer >= 1)
+        if self.text_area.isReadOnly() and self._currently_shown_layer >= 1:
+            self._attempt_decode()
+        # If in encode mode (text_area is not read-only)
+        elif not self.text_area.isReadOnly():
+            if not self.pwd_input.text():
+                self._status('Enter Pass 1 to encode.', 'error')
+            elif self.pwd_input2.text():
+                # Do nothing, encoding happens via Save button
+                pass
+        # Otherwise, return
+        else:
+            return
+
+    def _on_pass1_enter(self):
+        if self.worker_running:
+            return
+        if self.text_area.isReadOnly():
+            self._attempt_decode()
+    def _attempt_decode(self):
+        if self.worker_running: return
+        if not self.current_image_path or not os.path.exists(self.current_image_path): return
+        self.audio.play_sfx('click')
+        pass1 = self.pwd_input.text()
+        pass2 = self.pwd_input2.text()
+        self._set_worker(True)
+        self.decoderWorker = DecodeWorker(self.current_image_path, self.delimiter, pass1, pass2)
+        self.decoderWorker.decoding_finished.connect(lambda msg, enc, layer, l1msg: self._on_decode_result(msg, enc, layer, pass1, pass2, l1msg))
+        self.decoderWorker.error.connect(self._on_decode_error)
+        self.decoderWorker.start()
+
+    def _on_decode_result(self, msg, is_encrypted, layer, pass1, pass2, layer1_msg):
+        self._set_worker(False)
+        if msg and layer > 0:
+            self.original_message = msg
+            self._decoded_layer1_message = layer1_msg
+            self._decoded_layer2_message = msg
+            self._currently_shown_layer = layer
+            self.watermark.setText("DECODED")
+            self._update_watermark()
+            self.text_area.setHtml(convert_links_to_html(msg))
+            self.text_area.setReadOnly(True)
+            self.edit_btn.show()
+            self.copy_btn.show()
+            self.save_btn.hide()
+            self.cancel_btn.hide()
+            if pass1:
+                self._save_password_to_list(pass1)
+            if pass2 and layer == 2:
+                self._save_password_to_list(pass2)
+            if pass1 and not is_encrypted and layer == 1: self._status("Message found (Unencrypted). Password ignored.", "info")
+            elif is_encrypted: self._status("Message decrypted successfully.", "success")
+            else: self._status("Message found.", "success")
+            self.audio.play_sfx('success')
+            self._update_counter()
+            self._update_pass_field_highlight()
+        else:
+            self.original_message = ""
+            self._decoded_layer1_message = ""
+            self._currently_shown_layer = 0
+            self.text_area.clear()
+            if not getattr(self, '_loaded_image_has_message', True):
+                self.original_message = ""
+                self.watermark.setText("ENCODE")
+                self._update_watermark()
+                self.text_area.setReadOnly(False)
+                self.text_area.setFocus()
+                self.edit_btn.hide()
+                self.copy_btn.hide()
+                self.save_btn.show()
+                self.cancel_btn.show()
+                self._status("No message found in this image.", "error")
+            else:
+                self.text_area.setReadOnly(True)
+                self.watermark.setText("PASSWORD REQUIRED")
+                self._update_watermark()
+                self.edit_btn.hide()
+                self.copy_btn.hide()
+                self._status("Incorrect password or no message found.", "error")
+
+    def _on_decode_error(self, e):
+        self._set_worker(False)
+        self._status(f"Error: {e}", "error")
+
+    def eventFilter(self, obj, event):
+        if hasattr(self, 'pwd_input') and hasattr(self, 'pwd_input2') and obj in (self.pwd_input, self.pwd_input2):
+            if event.type() == QEvent.FocusIn:
+                self._last_focused_pwd_field = obj
+                if obj is self.pwd_input:
+                    self._switch_to_layer(1)
+                    if not self.text_area.isReadOnly():
+                        self._update_pass_field_highlight()
+                elif obj is self.pwd_input2 and (self._layer2_active or self.text_area.isReadOnly()):
+                    self._switch_to_layer(2)
+                    if self.text_area.isReadOnly() and self._decoded_layer2_message:
+                        self.text_area.setHtml(convert_links_to_html(self._decoded_layer2_message))
+                    if not self.text_area.isReadOnly():
+                        self._update_pass_field_highlight()
+            elif event.type() == QEvent.MouseButtonDblClick and event.button() == Qt.LeftButton:
+                self.audio.play_sfx('click')
+                self._last_focused_pwd_field = obj
+                self._show_saved_passwords_dialog()
+                return True
+        if self.help_mode_active and obj in self._tooltip_map:
+            if event.type() == QEvent.Enter:
+                self.help_tooltip.setText(self._tooltip_map[obj])
+                self._position_tooltip(obj)
+                self.help_tooltip.show()
+            elif event.type() == QEvent.Leave:
+                self.help_tooltip.hide()
+        if hasattr(self, 'thumb') and obj is self.thumb:
+            if event.type() == QEvent.MouseButtonDblClick and event.button() == Qt.LeftButton:
+                self._click_timer.stop()
+                self._handle_thumb_double_click()
+                return True
+            elif event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+                self._click_timer.start()
+                return True
+        if hasattr(self, 'text_area') and event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton and obj is self.text_area.viewport():
+            if self.text_area.isReadOnly():
+                pos = event.pos()
+                href = self.text_area.anchorAt(pos)
+                if href:
+                    QDesktopServices.openUrl(QUrl(href))
+                    return True
+                else:
+                    if hasattr(self, 'watermark') and self.watermark.text() == "DECODED":
+                        self._enter_edit_mode(pos)
+                        return True
+            return False
+        if event.type() == QEvent.Wheel:
+            if hasattr(self, 'meta_display') and hasattr(self, 'text_area') and obj in (self.meta_display.viewport(), self.text_area.viewport()):
+                if QApplication.keyboardModifiers() & Qt.ControlModifier:
+                    delta = FONT_STEP if event.angleDelta().y() > 0 else -FONT_STEP
+                    if obj is self.text_area.viewport(): self._zoom_text(delta)
+                    else: self._zoom_meta(delta)
+                    return True
+        return super().eventFilter(obj, event)
+
+    def _enter_edit_mode(self, click_pos=None):
+        self.audio.play_sfx('click')
+        self.text_area.setReadOnly(False)
+        self.watermark.setText("ENCODE")
+        self._update_watermark()
+        self.edit_btn.hide()
+        self.copy_btn.hide()
+        self.save_btn.show()
+        self.cancel_btn.show()
+        self.text_area.setFocus()
+        if click_pos is not None:
+            cursor = self.text_area.cursorForPosition(click_pos)
+            self.text_area.setTextCursor(cursor)
+        
+        if self._currently_shown_layer == 0:
+            self.pwd_input2.clear()
+            self._reset_dual_compose_state()
+        else:
+            if self._currently_shown_layer == 1:
+                self._editing_layer = 1
+            else:
+                self._editing_layer = 2
+            self._layer2_active = True
+            if self._editing_layer == 1:
+                self._message1_buffer = self.text_area.toPlainText()
+            else:
+                self._message2_buffer = self.text_area.toPlainText()
+        self._update_pass_field_highlight()
+
+    def _handle_thumb_single_click(self):
+        if self.current_image_path and os.path.exists(self.current_image_path): self._show_full_img()
+        else: self._select_image()
+
+    def _handle_thumb_double_click(self):
+        self._select_image()
+
+    def _show_thumb_menu(self):
+        if self.worker_running:
+            return
+        menu = QMenu(self)
+        load_action = QAction("Load Image (start fresh)", self)
+        load_action.triggered.connect(self._select_image)
+        menu.addAction(load_action)
+        replace_action = QAction("Replace Image (keep message)", self)
+        replace_action.triggered.connect(self._replace_image)
+        menu.addAction(replace_action)
+        show_action = QAction("Show Image", self)
+        if self.current_image_path and os.path.exists(self.current_image_path):
+            show_action.triggered.connect(self._show_full_img)
+        else:
+            show_action.triggered.connect(lambda: self._status("No image loaded", "error"))
+        menu.addAction(show_action)
+        menu.exec_(QCursor.pos())
+
+    def _toggle_edit(self):
+        self._enter_edit_mode()
+
+    def _cancel_edit(self):
+        self.audio.play_sfx('click')
+        if self.original_message:
+            self.text_area.setHtml(convert_links_to_html(self.original_message))
+            self.text_area.setReadOnly(True)
+            self.watermark.setText("DECODED")
+            self._update_watermark()
+            self.edit_btn.show()
+            self.copy_btn.show()
+        else:
+            self.text_area.clear()
+            self.text_area.setReadOnly(False)
+            self.watermark.setText("ENCODE")
+            self._update_watermark()
+            self.save_btn.show()
+            self.text_area.setFocus()
+        self.pwd_input2.clear()
+        self._reset_dual_compose_state()
+        self.cancel_btn.hide()
+
+    def _zoom_text(self, d):
+        n = max(MIN_FONT_SIZE, min(MAX_FONT_SIZE, self.text_font_size + d))
+        if n != self.text_font_size:
+            self.text_font_size = n
+            self.f_lbl.setText(f"{n}px")
+            self.text_area.setStyleSheet(f"font-family: 'Consolas', 'Courier New', monospace; font-size: {n}px; background-color: transparent; border: none;")
+
+    def _zoom_meta(self, d):
+        n = max(MIN_FONT_SIZE, min(MAX_FONT_SIZE, self.meta_font_size + d))
+        if n != self.meta_font_size:
+            self.meta_font_size = n
+            self.meta_display.setStyleSheet(f"background: rgba(20,20,20,80); border: 1px solid rgba(80,80,80,100); border-radius: 4px; color: #ccc; font-family: monospace; font-size: {n}px; padding: 8px;")
+
+    def _show_full_img(self):
+        if self.current_image_path and os.path.exists(self.current_image_path):
+            try:
+                if self.active_viewer and self.active_viewer.isVisible(): self.active_viewer.close()
+            except RuntimeError: pass
+            self.active_viewer = None
+            self.active_viewer = ZoomImageViewer(self.current_image_path, self)
+            self.active_viewer.show()
+
+    def _select_image(self):
+        if self.worker_running: return
+        self.audio.play_sfx('click')
+        p, _ = QFileDialog.getOpenFileName(self, "Select Image", self.settings.value("lastDir", os.path.dirname(os.path.abspath(__file__))), "Images (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.webp)")
+        if not p: return
+        self.settings.setValue("lastDir", os.path.dirname(p))
+        self._load_image(p)
+
+    def _replace_image(self):
+        if self.worker_running: return
+        self.audio.play_sfx('click')
+        p, _ = QFileDialog.getOpenFileName(self, "Replace Image", self.settings.value("lastDir", os.path.dirname(os.path.abspath(__file__))), "Images (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.webp)")
+        if not p: return
+        self.settings.setValue("lastDir", os.path.dirname(p))
+        self._load_image(p, carry_composition=True)
+
+    def _load_image(self, p, carry_composition=False):
+        if self.worker_running: return
+        if not carry_composition and self._has_unsaved_changes():
+            reply = QMessageBox.question(
+                self, "Unsaved Message",
+                "Loading a new image will discard the message you haven't saved yet. Continue?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if reply != QMessageBox.Yes:
+                return
+        is_valid, error_msg = self._validate_file_size(p)
+        if not is_valid:
+            self._status(error_msg, "error")
+            return
+        try:
+            if self.active_viewer and self.active_viewer.isVisible(): self.active_viewer.close()
+        except RuntimeError: pass
+        self.active_viewer = None
+        self._pending_load_path = p
+        self._carry_composition = carry_composition
+        self._set_worker(True)
+        self.loaderWorker = ImageLoadWorker(p, self.delimiter)
+        self.loaderWorker.loaded.connect(self._on_image_loaded)
+        self.loaderWorker.error.connect(self._on_image_load_error)
+        self.loaderWorker.start()
+
+    def _on_image_loaded(self, result):
+        p = self._pending_load_path
+        self._set_worker(False)
+        self.current_image_path = p
+        self.available_capacity_bits = result['capacity_bits']
+        self._loaded_image_has_message = result['has_message']
+        
+        # Preserve composition if live and carry_composition is True
+        if self._has_live_composition() and self._carry_composition:
+            self._status("Image loaded â€” your unsaved message has been carried over to this image.", "info")
+        else:
+            self.pwd_input.clear()
+            self.pwd_input2.clear()
+            self._reset_dual_compose_state()
+        
+        with _SuppressStderr():
+            thumb_pixmap = QPixmap(p)
+        self.thumb.setPixmap(thumb_pixmap.scaled(THUMBNAIL_SIZE * 2, THUMBNAIL_SIZE * 2, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        self.thumb.setText("")
+        self.view_btn.setEnabled(True)
+        self.meta_display.setHtml(self._extract_metadata(p))
+        
+        # Only process embedded message if no live composition or not carrying composition
+        if not self._has_live_composition() or not self._carry_composition:
+            has_message = result['has_message']
+            is_encrypted = result['is_encrypted']
+            if has_message:
+                if is_encrypted:
+                    self.original_message = ""
+                    self.watermark.setText("PASSWORD REQUIRED")
+                    self._update_watermark()
+                    self.text_area.clear()
+                    self.text_area.setReadOnly(True)
+                    self.edit_btn.hide()
+                    self.copy_btn.hide()
+                    self.save_btn.hide()
+                    self.cancel_btn.hide()
+                    self._status("Encrypted message detected. Enter password and press Enter to decode.", "info")
+                    self.pwd_input.setFocus()
+                else:
+                    msg = result['message']
+                    self.original_message = msg
+                    self.watermark.setText("DECODED")
+                    self._update_watermark()
+                    self.text_area.setHtml(convert_links_to_html(msg))
+                    self.text_area.setReadOnly(True)
+                    self.edit_btn.show()
+                    self.copy_btn.show()
+                    self.save_btn.hide()
+                    self.cancel_btn.hide()
+                    self._status("Message found (unencrypted).", "success")
+                    self.audio.play_sfx('success')
+            else:
+                self.original_message = ""
+                self.watermark.setText("ENCODE")
+                self._update_watermark()
+                self.text_area.clear()
+                self.text_area.setReadOnly(False)
+                self.text_area.setFocus()
+                self.edit_btn.hide()
+                self.copy_btn.hide()
+                self.save_btn.show()
+                self.cancel_btn.show()
+                self._status("Ready to encode", "info")
+        
+        self._update_counter()
+
+    def _on_image_load_error(self, e):
+        self._set_worker(False)
+        self._status(f"Error loading image: {e}", "error")
+
+    def _update_counter(self):
+        if not hasattr(self, 'capacity_progress_bar'):
+            return
+        pass1 = self.pwd_input.text() if hasattr(self, 'pwd_input') else ""
+        pass2 = self.pwd_input2.text() if hasattr(self, 'pwd_input2') else ""
+        current_layer1 = self.text_area.toPlainText() if self._editing_layer == 1 else self._message1_buffer
+        msg1_bytes = len(current_layer1.encode('utf-8'))
+        payload1_len = self._estimate_encrypted_len(msg1_bytes) if pass1 else msg1_bytes
+        if pass2:
+            current_layer2 = self.text_area.toPlainText() if self._editing_layer == 2 else self._message2_buffer
+            msg2_bytes = len(current_layer2.encode('utf-8'))
+            payload2_len = self._estimate_encrypted_len(msg2_bytes)
+            c = payload1_len + payload2_len
+            overhead = len(DUAL_HEADER) + len(self.delimiter) * 2
+        else:
+            c = payload1_len
+            overhead = len(self.magic_header) + len(self.delimiter)
+        m = (self.available_capacity_bits // 8) - overhead if self.available_capacity_bits else 0
+        if m > 0:
+            percentage = min(100, (c / m) * 100)
+            self.capacity_progress_bar.setValue(int(percentage))
+            self.capacity_percent_label.setText(f"{int(percentage)}%")
+            if percentage >= 100:
+                self.capacity_progress_bar.setStyleSheet("QProgressBar { border: none; background-color: rgba(100, 100, 100, 0.3); border-radius: 4px; } QProgressBar::chunk { background-color: #FF4444; border-radius: 4px; }")
+            elif percentage >= 80:
+                self.capacity_progress_bar.setStyleSheet("QProgressBar { border: none; background-color: rgba(100, 100, 100, 0.3); border-radius: 4px; } QProgressBar::chunk { background-color: #FFA500; border-radius: 4px; }")
+            else:
+                self.capacity_progress_bar.setStyleSheet("QProgressBar { border: none; background-color: rgba(100, 100, 100, 0.3); border-radius: 4px; } QProgressBar::chunk { background-color: #4CAF50; border-radius: 4px; }")
+        else:
+            self.capacity_progress_bar.setValue(0)
+            self.capacity_percent_label.setText("0%")
+
+    def _status(self, m, t="info"):
+        colors = {'error': '#FF4444', 'success': '#44FF44', 'info': '#FFFFFF'}
+        color = colors.get(t, '#FFFFFF')
+        self.st_lbl.setText(m)
+        for attr in ('_status_pulse_timer', '_status_revert_timer'):
+            timer = getattr(self, attr, None)
+            if timer is not None:
+                timer.stop()
+        if t != 'error':
+            self.st_lbl.setStyleSheet(f"color: {color}; font-size: 13px;")
+            return
+        self.audio.play_sfx('error')
+        self._status_pulse_count = 0
+        self._status_pulse_timer = QTimer(self)
+        self._status_pulse_timer.setInterval(120)
+
+        def _pulse():
+            self._status_pulse_count += 1
+            if self._status_pulse_count > 12:
+                self._status_pulse_timer.stop()
+                self.st_lbl.setStyleSheet("color: #FF4444; font-size: 13px;")
+                return
+            if self._status_pulse_count % 2 == 1:
+                self.st_lbl.setStyleSheet("color: #FFFFFF; font-size: 13px; font-weight: bold;")
+            else:
+                self.st_lbl.setStyleSheet("color: #992222; font-size: 13px;")
+
+        self._status_pulse_timer.timeout.connect(_pulse)
+        self._status_pulse_timer.start()
+        self._status_revert_timer = QTimer(self)
+        self._status_revert_timer.setSingleShot(True)
+        self._status_revert_timer.timeout.connect(
+            lambda: self.st_lbl.setStyleSheet("color: #FFFFFF; font-size: 13px;"))
+        self._status_revert_timer.start(4000)
+
+    def _set_worker(self, r):
+        self._cleanup_workers()
+        self.worker_running = r
+        self.setCursor(Qt.BusyCursor if r else (Qt.WhatsThisCursor if self.help_mode_active else Qt.ArrowCursor))
+        if r: self.loading_spinner.start_spinning()
+        else: self.loading_spinner.stop_spinning()
+        for x in (self.sel_btn, self.view_btn, self.font_down, self.font_up, self.save_btn, self.cancel_btn,
+                  self.edit_btn, self.copy_btn, self.pwd_input, self.pwd_memory_btn, self.pwd_show_btn,
+                  self.pwd_input2, self.pwd_show_btn2):
+            if x: x.setEnabled(not r)
+        if r: self._status("Processing...", "info")
+
+    def _encode_msg(self):
+        if self.worker_running: return
+        if self._editing_layer == 1:
+            self._message1_buffer = self.text_area.toPlainText()
+        else:
+            self._message2_buffer = self.text_area.toPlainText()
+        m1 = self._message1_buffer.strip()
+        if not m1: return self._status("Empty", "error")
+        pass1 = self.pwd_input.text()
+        pass2 = self.pwd_input2.text()
+        m2 = self._message2_buffer.strip()
+        if m2 and not pass2 and self._editing_layer == 2:
+            return self._status("Message 2 has content - add a Pass 2 password before saving.", "error")
+        is_dual = bool(pass2)
+        if pass1:
+            self._save_password_to_list(pass1)
+        if is_dual:
+            self._save_password_to_list(pass2)
+        msg1_bytes_len = len(m1.encode('utf-8'))
+        payload1_len = self._estimate_encrypted_len(msg1_bytes_len) if pass1 else msg1_bytes_len
+        if is_dual:
+            msg2_bytes_len = len(m2.encode('utf-8'))
+            payload2_len = self._estimate_encrypted_len(msg2_bytes_len)
+            total_payload = payload1_len + payload2_len
+            header_len = len(DUAL_HEADER)
+            delim_overhead = len(self.delimiter) * 2
+        else:
+            total_payload = payload1_len
+            header_len = len(self.magic_header)
+            delim_overhead = len(self.delimiter)
+        if (header_len + total_payload + delim_overhead) * 8 > self.available_capacity_bits:
+            max_chars = (self.available_capacity_bits // 8) - (header_len + delim_overhead)
+            if pass1 or is_dual:
+                max_chars = max(0, max_chars - AES_SALT_SIZE - AES_IV_SIZE - 16)
+            return QMessageBox.warning(self, "Capacity", f"Message exceeds capacity. Max approx {max_chars} chars total.")
+        base = os.path.splitext(os.path.basename(self.current_image_path))[0]
+        default_name = f"{base}_steganosed"
+        filters = "All Lossless Formats (*.png *.bmp *.tiff *.tif *.webp);;PNG Files (*.png);;BMP Files (*.bmp);;TIFF Files (*.tiff *.tif);;WebP Files (*.webp)"
+        s, selected_filter = QFileDialog.getSaveFileName(self, "Save Image", os.path.join(self.settings.value("lastDir", ""), default_name), filters)
+        if not s: return
+        ext = os.path.splitext(s)[1].lower()
+        if ext == ".png": out_fmt = "PNG"
+        elif ext == ".bmp": out_fmt = "BMP"
+        elif ext in [".tiff", ".tif"]: out_fmt = "TIFF"
+        elif ext == ".webp": out_fmt = "WEBP"
+        else:
+            if "BMP" in selected_filter: out_fmt, ext = "BMP", ".bmp"
+            elif "TIFF" in selected_filter: out_fmt, ext = "TIFF", ".tiff"
+            elif "WebP" in selected_filter: out_fmt, ext = "WebP", ".webp"
+            else: out_fmt, ext = "PNG", ".png"
+            s += ext
+        self.settings.setValue("lastDir", os.path.dirname(s))
+        self._set_worker(True)
+        self.audio.play_sfx('action')
+        if is_dual:
+            self.encoderWorker = EncodeWorker(encode_dual_image, (self.current_image_path, m1, m2, s, DUAL_HEADER, self.delimiter, out_fmt, pass1, pass2))
+        else:
+            self.encoderWorker = EncodeWorker(encode_image, (self.current_image_path, m1, s, self.magic_header, self.delimiter, out_fmt, pass1))
+        self.encoderWorker.encoding_finished.connect(lambda: self._on_encode_success(m1, s))
+        self.encoderWorker.error.connect(self._on_encode_error)
+        self.encoderWorker.start()
+
+    def _on_encode_success(self, msg, path):
+        self.original_message = msg
+        self.text_area.setHtml(convert_links_to_html(msg))
+        self.text_area.setReadOnly(True)
+        self.watermark.setText("DECODED")
+        self._update_watermark()
+        self.edit_btn.show()
+        self.copy_btn.show()
+        self.save_btn.hide()
+        self.cancel_btn.hide()
+        self.pwd_input.clear()
+        self.pwd_input2.clear()
+        self._reset_dual_compose_state()
+        self._status(f"Saved: {os.path.basename(path)}", "success")
+        self.audio.play_sfx('success')
+        self._animate_success()
+        self._set_worker(False)
+
+    def _on_encode_error(self, e):
+        self._status(f"Error: {e}", "error")
+        self._animate_error()
+        self._set_worker(False)
+
+    def _animate_success(self):
+        self.watermark.setStyleSheet("color: rgba(76, 175, 80, 0.3); background: transparent; font-size: 100px;")
+        QTimer.singleShot(500, lambda: self._update_watermark())
+
+    def _animate_error(self):
+        self.watermark.setStyleSheet("color: rgba(244, 67, 54, 0.3); background: transparent; font-size: 100px;")
+        QTimer.singleShot(500, lambda: self._update_watermark())
+
+if __name__ == "__main__":
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    app = QApplication(sys.argv)
+    app.setStyle('Fusion')
+    window = SteganographyApp()
+    window.show()
+    sys.exit(app.exec_())
