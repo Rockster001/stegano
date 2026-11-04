@@ -10,7 +10,7 @@ import platform
 from datetime import datetime
 import numpy as np
 import secrets
-from steganography_utils import _encrypt_bytes_aes, _decrypt_bytes_aes, _encrypt_bytes, encode_image, encode_dual_image, decode_image, decode_dual_image, _embed_bits_and_save, _extract_raw_lsb_bytes, detect_message_format, _extract_dual_layers, _try_decrypt_payload
+from steganography_utils import _encrypt_bytes_aes, _decrypt_bytes_aes, _encrypt_bytes, encode_image, encode_dual_image, decode_image, decode_dual_image, _embed_bits_and_save, _extract_raw_lsb_bytes, detect_message_format, _extract_dual_layers, _try_decrypt_payload, extract_dual_layer2_blob, encode_dual_image_from_blobs
 from PIL import Image, ExifTags
 from PyQt5.QtGui import QColor, QPalette, QFontMetrics, QKeySequence
 os.environ["QT_LOGGING_RULES"] = ".warning=false;qt.qpa.=false;libpng.*=false"
@@ -38,36 +38,43 @@ from ui_components import (
 )
 from workers import EncodeWorker, DecodeWorker, ImageLoadWorker
 
-
-VERSION = os.path.basename(__file__).replace("Stegano", "").replace(".py", "")
 STEALTH_HEADER = hashlib.sha256(b"STEGO_MAGIC").digest()
 LEGACY_HEADER = b"STEGO_MAGIC"
 DUAL_HEADER = hashlib.sha256(b"STEGO_DUAL_MAGIC").digest()
-DELIMITER = "\x00\x00\x03"
-THUMBNAIL_SIZE = 128
-MIN_FONT_SIZE = 10
-MAX_FONT_SIZE = 48
-FONT_STEP = 2
-DEFAULT_FONT_SIZE = 18
-TOOLTIP_WIDTH = 400
-TOOLTIP_HEIGHT = 120
-TOOLTIP_DELAY_MS = 150
-MAX_SAVED_PASSWORDS = 10
-MAX_FILE_SIZE_MB = 50
-WATERMARK_MIN_SIZE = 16
-WATERMARK_MAX_SIZE = 800
-WATERMARK_REF_SIZE = 100
-WATERMARK_MIN_SCALE = 0.1
-WATERMARK_MAX_SCALE = 5.0
-ZOOM_STEP = 0.15
-ZOOM_MIN = 0.05
-ZOOM_MAX = 5.0
-AES_KEY_SIZE = 32
-AES_SALT_SIZE = 16
-AES_IV_SIZE = 16
-PBKDF2_ITERATIONS = 100000
-TOAST_DURATION_MS = 3000
 
+
+class Config:
+    VERSION = os.path.basename(__file__).replace("Stegano", "").replace(".py", "")
+    STEALTH_HEADER = hashlib.sha256(b"STEGO_MAGIC").digest()
+    LEGACY_HEADER = b"STEGO_MAGIC"
+    DUAL_HEADER = hashlib.sha256(b"STEGO_DUAL_MAGIC").digest()
+    DELIMITER = "\x00\x00\x03"
+    THUMBNAIL_SIZE = 128
+    MIN_FONT_SIZE = 10
+    MAX_FONT_SIZE = 48
+    FONT_STEP = 2
+    DEFAULT_FONT_SIZE = 18
+    TOOLTIP_WIDTH = 400
+    TOOLTIP_HEIGHT = 120
+    TOOLTIP_DELAY_MS = 150
+    MAX_SAVED_PASSWORDS = 10
+    MAX_FILE_SIZE_MB = 50
+    WATERMARK_MIN_SIZE = 16
+    WATERMARK_MAX_SIZE = 800
+    WATERMARK_REF_SIZE = 100
+    WATERMARK_MIN_SCALE = 0.1
+    WATERMARK_MAX_SCALE = 5.0
+    ZOOM_STEP = 0.15
+    ZOOM_MIN = 0.05
+    ZOOM_MAX = 5.0
+    AES_KEY_SIZE = 32
+    AES_SALT_SIZE = 16
+    AES_IV_SIZE = 16
+    PBKDF2_ITERATIONS = 100000
+    TOAST_DURATION_MS = 3000
+
+
+globals().update({k: v for k, v in dict(vars(Config)).items() if not k.startswith(chr(95))})
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s: %(message)s")
 logger = logging.getLogger("Stegano")
 
@@ -167,15 +174,26 @@ class SteganographyApp(QMainWindow):
         self.encoderWorker = self.decoderWorker = self.loaderWorker = None
         self._pending_load_path = ""
         self._last_focused_pwd_field = None
-        self._layer2_active = False
-        self._editing_layer = 1
-        self._message1_buffer = ""
-        self._message2_buffer = ""
-        self._decoded_layer1_message = ""
-        self._currently_shown_layer = 0
+        self.state = {
+            'layer2_active': False,
+            'editing_layer': 1,
+            'message1_buffer': "",
+            'message2_buffer': "",
+            'decoded_layer1_message': "",
+            'currently_shown_layer': 0,
+            'loaded_image_is_encrypted': False,
+            'loaded_image_has_message': False,
+            'help_mode_active': False,
+            'last_focused_pwd_field': None,
+            'carry_composition': True
+        }
         self.audio = AudioManager()
-        self.help_mode_active = False
-        self._tooltip_map = {}
+        self.ui_state = {
+            'tooltip_map': {},
+            'help_tooltip': QLabel(),
+            'watermark': None,
+            'active_viewer': None
+        }
         self.help_tooltip = QLabel()
         self.help_tooltip.setFixedSize(400, 120)
         self.help_tooltip.setWordWrap(True)
@@ -191,6 +209,16 @@ class SteganographyApp(QMainWindow):
         self.active_viewer = None
         self._saved_passwords = self._load_saved_passwords()
         self._decoded_layer2_message = ""
+        self._loaded_image_is_encrypted = False
+        self._tooltip_map = {}
+        self.help_mode_active = False
+        self._layer2_active = False
+        self._editing_layer = 1
+        self._message1_buffer = ""
+        self._message2_buffer = ""
+        self._decoded_layer1_message = ""
+        self._currently_shown_layer = 0
+        self._loaded_image_has_message = False
         self.toast_notification = ToastNotification(self)
         self.loading_spinner = LoadingSpinner(self)
         self.password_strength_indicator = PasswordStrengthMeter(self)
@@ -209,17 +237,15 @@ class SteganographyApp(QMainWindow):
         self._restore_window_state()
 
     def _has_unsaved_changes(self):
-        if self._has_live_composition():
-            return True
         if not hasattr(self, 'save_btn') or not self.save_btn.isVisible():
             return False
         current_layer1 = (self.text_area.toPlainText() if self._editing_layer == 1 else self._message1_buffer).strip()
         current_layer2 = (self.text_area.toPlainText() if self._editing_layer == 2 else self._message2_buffer).strip()
         if not current_layer1 and not current_layer2:
             return False
-        if current_layer2:
+        if current_layer2 and current_layer2 != self._decoded_layer2_message.strip():
             return True
-        return current_layer1 != self.original_message
+        return bool(current_layer1) and current_layer1 != self._decoded_layer1_message.strip()
 
     def _has_live_composition(self):
         if self._editing_layer not in (1, 2):
@@ -240,6 +266,11 @@ class SteganographyApp(QMainWindow):
                 event.ignore()
                 return
         self._cleanup_workers()
+        if hasattr(self, 'active_viewer') and self.active_viewer:
+            try:
+                self.active_viewer.close()
+            except:
+                pass
         self.settings.setValue("geometry", self.saveGeometry())
         self._persist_saved_passwords()
         self.settings.sync()
@@ -324,7 +355,7 @@ class SteganographyApp(QMainWindow):
             if w and w.isRunning(): w.wait()
 
     def _save_password_to_list(self, password):
-        if not password:
+        if not password or password.strip() == "":
             return
         if password in self._saved_passwords:
             self._saved_passwords.remove(password)
@@ -349,7 +380,13 @@ class SteganographyApp(QMainWindow):
             if cw:
                 self.container.resize(cw.size())
                 self.background.resize(cw.size())
-        QTimer.singleShot(100, self._update_watermark)
+        # Throttle watermark updates to avoid performance issues
+        if hasattr(self, '_watermark_timer'):
+            self._watermark_timer.stop()
+        self._watermark_timer = QTimer(self)
+        self._watermark_timer.setSingleShot(True)
+        self._watermark_timer.timeout.connect(self._update_watermark)
+        self._watermark_timer.start(200)
         super().resizeEvent(event)
 
     def showEvent(self, event):
@@ -956,6 +993,8 @@ class SteganographyApp(QMainWindow):
         self._message1_buffer = ""
         self._message2_buffer = ""
         self._decoded_layer1_message = ""
+        self._decoded_layer2_message = ""
+        self._decoded_layer2_blob = None
         self._currently_shown_layer = 0
         self._clear_pass_field_highlight()
 
@@ -975,6 +1014,11 @@ class SteganographyApp(QMainWindow):
             else:
                 self.text_area.setHtml(convert_links_to_html(self._decoded_layer2_message))
         else:
+            if target == 1:
+                if not self._message1_buffer and self._decoded_layer1_message:
+                    self._message1_buffer = self._decoded_layer1_message
+            elif not self._message2_buffer and self._decoded_layer2_message:
+                self._message2_buffer = self._decoded_layer2_message
             self.text_area.setPlainText(self._message1_buffer if target == 1 else self._message2_buffer)
         self._update_pass_field_highlight()
         self._update_counter()
@@ -1003,29 +1047,48 @@ class SteganographyApp(QMainWindow):
         if self.worker_running:
             return
         if self.text_area.isReadOnly():
+            if getattr(self, '_loaded_image_has_message', True) and not self.original_message and not self.pwd_input.text().strip():
+                self._status("Enter a password first.", "error")
+                return
             self._attempt_decode()
     def _attempt_decode(self):
         if self.worker_running: return
-        if not self.current_image_path or not os.path.exists(self.current_image_path): return
+        if not self.current_image_path or not os.path.exists(self.current_image_path): 
+            self._status("No image loaded", "error")
+            return
         self.audio.play_sfx('click')
         pass1 = self.pwd_input.text()
         pass2 = self.pwd_input2.text()
         self._set_worker(True)
         self.decoderWorker = DecodeWorker(self.current_image_path, self.delimiter, pass1, pass2)
-        self.decoderWorker.decoding_finished.connect(lambda msg, enc, layer, l1msg: self._on_decode_result(msg, enc, layer, pass1, pass2, l1msg))
+        self.decoderWorker.decoding_finished.connect(lambda msg, enc, layer, l1msg, fmt: self._on_decode_result(msg, enc, layer, pass1, pass2, l1msg, fmt))
         self.decoderWorker.error.connect(self._on_decode_error)
         self.decoderWorker.start()
 
-    def _on_decode_result(self, msg, is_encrypted, layer, pass1, pass2, layer1_msg):
+    def _on_decode_result(self, msg, is_encrypted, layer, pass1, pass2, layer1_msg, fmt="none"):
         self._set_worker(False)
         if msg and layer > 0:
+            self._loaded_image_format = fmt
             self.original_message = msg
+            if fmt == "dual":
+                self._decoded_layer2_blob = extract_dual_layer2_blob(self.current_image_path, self.delimiter)
+            else:
+                self._decoded_layer2_blob = None
             self._decoded_layer1_message = layer1_msg
-            self._decoded_layer2_message = msg
-            self._currently_shown_layer = layer
+            if layer == 2:
+                self._decoded_layer2_message = msg
+            else:
+                self._decoded_layer2_message = ""
+            if fmt == "dual" and layer == 2 and layer1_msg:
+                self._currently_shown_layer = 1
+                self.original_message = layer1_msg
+                shown = layer1_msg
+            else:
+                self._currently_shown_layer = layer
+                shown = msg
             self.watermark.setText("DECODED")
             self._update_watermark()
-            self.text_area.setHtml(convert_links_to_html(msg))
+            self.text_area.setHtml(convert_links_to_html(shown))
             self.text_area.setReadOnly(True)
             self.edit_btn.show()
             self.copy_btn.show()
@@ -1042,16 +1105,32 @@ class SteganographyApp(QMainWindow):
             self._update_counter()
             self._update_pass_field_highlight()
         else:
-            self.original_message = ""
-            self._decoded_layer1_message = ""
-            self._currently_shown_layer = 0
-            self.text_area.clear()
-            self.text_area.setReadOnly(True)
-            self.watermark.setText("PASSWORD REQUIRED")
-            self._update_watermark()
-            self.edit_btn.hide()
-            self.copy_btn.hide()
-            self._status("Incorrect password or no message found.", "error")
+            if not self.original_message:
+                self.original_message = ""
+                self._decoded_layer1_message = ""
+                self._decoded_layer2_message = ""
+                self._currently_shown_layer = 0
+                self.text_area.clear()
+                if not getattr(self, '_loaded_image_has_message', True):
+                    self.original_message = ""
+                    self.watermark.setText("ENCODE")
+                    self._update_watermark()
+                    self.text_area.setReadOnly(False)
+                    self.text_area.setFocus()
+                    self.edit_btn.hide()
+                    self.copy_btn.hide()
+                    self.save_btn.show()
+                    self.cancel_btn.show()
+                    self._status("No message found in this image.", "error")
+                else:
+                    self.text_area.setReadOnly(True)
+                    self.watermark.setText("PASSWORD REQUIRED")
+                    self._update_watermark()
+                    self.edit_btn.hide()
+                    self.copy_btn.hide()
+                    self._status("Incorrect password or no message found.", "error")
+            else:
+                self._status("Incorrect password or no message found.", "error")
 
     def _on_decode_error(self, e):
         self._set_worker(False)
@@ -1065,7 +1144,9 @@ class SteganographyApp(QMainWindow):
                     self._switch_to_layer(1)
                     if not self.text_area.isReadOnly():
                         self._update_pass_field_highlight()
-                elif obj is self.pwd_input2 and (self._layer2_active or self.text_area.isReadOnly()):
+                elif obj is self.pwd_input2:
+                    if not self.text_area.isReadOnly():
+                        self._layer2_active = True
                     self._switch_to_layer(2)
                     if self.text_area.isReadOnly() and self._decoded_layer2_message:
                         self.text_area.setHtml(convert_links_to_html(self._decoded_layer2_message))
@@ -1135,6 +1216,10 @@ class SteganographyApp(QMainWindow):
             else:
                 self._editing_layer = 2
             self._layer2_active = True
+            if not self._message1_buffer and self._decoded_layer1_message:
+                self._message1_buffer = self._decoded_layer1_message
+            if not self._message2_buffer and self._decoded_layer2_message:
+                self._message2_buffer = self._decoded_layer2_message
             if self._editing_layer == 1:
                 self._message1_buffer = self.text_area.toPlainText()
             else:
@@ -1178,6 +1263,9 @@ class SteganographyApp(QMainWindow):
             self._update_watermark()
             self.edit_btn.show()
             self.copy_btn.show()
+            self.save_btn.hide()
+            self._message1_buffer = self._decoded_layer1_message or ""
+            self._message2_buffer = self._decoded_layer2_message or ""
         else:
             self.text_area.clear()
             self.text_area.setReadOnly(False)
@@ -1185,8 +1273,6 @@ class SteganographyApp(QMainWindow):
             self._update_watermark()
             self.save_btn.show()
             self.text_area.setFocus()
-        self.pwd_input2.clear()
-        self._reset_dual_compose_state()
         self.cancel_btn.hide()
 
     def _zoom_text(self, d):
@@ -1229,6 +1315,12 @@ class SteganographyApp(QMainWindow):
 
     def _load_image(self, p, carry_composition=False):
         if self.worker_running: return
+        if not self._validate_image_load(p, carry_composition):
+            return
+        self._prepare_image_load(p, carry_composition)
+        self._start_image_loading(p)
+    
+    def _validate_image_load(self, p, carry_composition):
         if not carry_composition and self._has_unsaved_changes():
             reply = QMessageBox.question(
                 self, "Unsaved Message",
@@ -1236,17 +1328,24 @@ class SteganographyApp(QMainWindow):
                 QMessageBox.Yes | QMessageBox.No
             )
             if reply != QMessageBox.Yes:
-                return
+                return False
         is_valid, error_msg = self._validate_file_size(p)
         if not is_valid:
             self._status(error_msg, "error")
-            return
+            return False
+        return True
+    
+    def _prepare_image_load(self, p, carry_composition):
         try:
-            if self.active_viewer and self.active_viewer.isVisible(): self.active_viewer.close()
-        except RuntimeError: pass
+            if self.active_viewer and self.active_viewer.isVisible(): 
+                self.active_viewer.close()
+        except RuntimeError: 
+            pass
         self.active_viewer = None
         self._pending_load_path = p
         self._carry_composition = carry_composition
+    
+    def _start_image_loading(self, p):
         self._set_worker(True)
         self.loaderWorker = ImageLoadWorker(p, self.delimiter)
         self.loaderWorker.loaded.connect(self._on_image_loaded)
@@ -1256,8 +1355,14 @@ class SteganographyApp(QMainWindow):
     def _on_image_loaded(self, result):
         p = self._pending_load_path
         self._set_worker(False)
-        self.current_image_path = p
-        self.available_capacity_bits = result['capacity_bits']
+        try:
+            self.current_image_path = p
+            self.available_capacity_bits = result['capacity_bits']
+            self._loaded_image_has_message = result['has_message']
+            self._loaded_image_format = result.get('format', 'none')
+        except Exception as e:
+            self._status(f"Error processing image: {str(e)}", "error")
+            return
         
         # Preserve composition if live and carry_composition is True
         if self._has_live_composition() and self._carry_composition:
@@ -1280,6 +1385,7 @@ class SteganographyApp(QMainWindow):
             is_encrypted = result['is_encrypted']
             if has_message:
                 if is_encrypted:
+                    self._loaded_image_is_encrypted = True
                     self.original_message = ""
                     self.watermark.setText("PASSWORD REQUIRED")
                     self._update_watermark()
@@ -1292,6 +1398,7 @@ class SteganographyApp(QMainWindow):
                     self._status("Encrypted message detected. Enter password and press Enter to decode.", "info")
                     self.pwd_input.setFocus()
                 else:
+                    self._loaded_image_is_encrypted = False
                     msg = result['message']
                     self.original_message = msg
                     self.watermark.setText("DECODED")
@@ -1305,6 +1412,7 @@ class SteganographyApp(QMainWindow):
                     self._status("Message found (unencrypted).", "success")
                     self.audio.play_sfx('success')
             else:
+                self._loaded_image_is_encrypted = False
                 self.original_message = ""
                 self.watermark.setText("ENCODE")
                 self._update_watermark()
@@ -1391,6 +1499,8 @@ class SteganographyApp(QMainWindow):
         self._status_revert_timer.start(4000)
 
     def _set_worker(self, r):
+        if self.worker_running == r:
+            return
         self._cleanup_workers()
         self.worker_running = r
         self.setCursor(Qt.BusyCursor if r else (Qt.WhatsThisCursor if self.help_mode_active else Qt.ArrowCursor))
@@ -1413,9 +1523,15 @@ class SteganographyApp(QMainWindow):
         pass1 = self.pwd_input.text()
         pass2 = self.pwd_input2.text()
         m2 = self._message2_buffer.strip()
-        if m2 and not pass2 and self._editing_layer == 2:
-            return self._status("Message 2 has content - add a Pass 2 password before saving.", "error")
-        is_dual = bool(pass2)
+        layer2_rides = (self._loaded_image_format == "dual" and getattr(self, "_decoded_layer2_blob", None)
+                        and m2 == (getattr(self, "_decoded_layer2_message", "") or "").strip())
+        if m2 and not pass2 and not layer2_rides:
+            if pass1:
+                self._status("Pass 2 empty - message 2 will be protected by Pass 1.", "info")
+                pass2 = pass1
+            else:
+                self._status("No passwords - message 2 will be stored unencrypted.", "info")
+        is_dual = (self._loaded_image_format == "dual") or bool(pass2) or bool(m2)
         if pass1:
             self._save_password_to_list(pass1)
         if is_dual:
@@ -1423,8 +1539,11 @@ class SteganographyApp(QMainWindow):
         msg1_bytes_len = len(m1.encode('utf-8'))
         payload1_len = self._estimate_encrypted_len(msg1_bytes_len) if pass1 else msg1_bytes_len
         if is_dual:
-            msg2_bytes_len = len(m2.encode('utf-8'))
-            payload2_len = self._estimate_encrypted_len(msg2_bytes_len)
+            if layer2_rides:
+                payload2_len = len(self._decoded_layer2_blob)
+            else:
+                msg2_bytes_len = len(m2.encode('utf-8'))
+                payload2_len = self._estimate_encrypted_len(msg2_bytes_len)
             total_payload = payload1_len + payload2_len
             header_len = len(DUAL_HEADER)
             delim_overhead = len(self.delimiter) * 2
@@ -1456,17 +1575,32 @@ class SteganographyApp(QMainWindow):
         self.settings.setValue("lastDir", os.path.dirname(s))
         self._set_worker(True)
         self.audio.play_sfx('action')
-        if is_dual:
+        if is_dual and layer2_rides:
+            self.encoderWorker = EncodeWorker(encode_dual_image_from_blobs, (self.current_image_path, m1, pass1, self._decoded_layer2_blob, DUAL_HEADER, self.delimiter, s, out_fmt))
+        elif is_dual:
             self.encoderWorker = EncodeWorker(encode_dual_image, (self.current_image_path, m1, m2, s, DUAL_HEADER, self.delimiter, out_fmt, pass1, pass2))
         else:
             self.encoderWorker = EncodeWorker(encode_image, (self.current_image_path, m1, s, self.magic_header, self.delimiter, out_fmt, pass1))
-        self.encoderWorker.encoding_finished.connect(lambda: self._on_encode_success(m1, s))
+        self.encoderWorker.encoding_finished.connect(lambda: self._on_encode_success(m1, m2, s))
         self.encoderWorker.error.connect(self._on_encode_error)
         self.encoderWorker.start()
 
-    def _on_encode_success(self, msg, path):
-        self.original_message = msg
-        self.text_area.setHtml(convert_links_to_html(msg))
+    def _on_encode_success(self, msg, msg2, path):
+        self._decoded_layer1_message = msg
+        self._message1_buffer = msg
+        self._message2_buffer = msg2 or (getattr(self, "_decoded_layer2_message", "") or "")
+        if (msg2 or "").strip():
+            self._loaded_image_format = "dual"
+            self._decoded_layer2_message = msg2
+        if (msg2 or "").strip() and self._editing_layer == 2:
+            self._currently_shown_layer = 2
+            self.original_message = msg2
+            shown = msg2
+        else:
+            self._currently_shown_layer = 1
+            self.original_message = msg
+            shown = msg
+        self.text_area.setHtml(convert_links_to_html(shown))
         self.text_area.setReadOnly(True)
         self.watermark.setText("DECODED")
         self._update_watermark()
@@ -1474,9 +1608,7 @@ class SteganographyApp(QMainWindow):
         self.copy_btn.show()
         self.save_btn.hide()
         self.cancel_btn.hide()
-        self.pwd_input.clear()
-        self.pwd_input2.clear()
-        self._reset_dual_compose_state()
+        self._update_pass_field_highlight()
         self._status(f"Saved: {os.path.basename(path)}", "success")
         self.audio.play_sfx('success')
         self._animate_success()

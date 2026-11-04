@@ -88,13 +88,14 @@ def encode_image(img_path, msg, save_path, header_bytes, delim, out_format="PNG"
     _embed_bits_and_save(img_path, full_data, save_path, out_format)
 
 def encode_dual_image(img_path, msg1, msg2, save_path, dual_header_bytes, delim, out_format="PNG", pass1="", pass2=""):
+    if msg2 and not pass2:
+        pass2 = pass1
     payload1 = msg1.encode("utf-8")
     if pass1: payload1 = _encrypt_bytes_aes(payload1, pass1)
     payload2 = _encrypt_bytes_aes(msg2.encode("utf-8"), pass2)
     delim_bytes = delim.encode("utf-8")
     full_data = dual_header_bytes + payload1 + delim_bytes + payload2 + delim_bytes
     _embed_bits_and_save(img_path, full_data, save_path, out_format)
-
 def decode_image(img_path, delim, password=""):
     img = Image.open(img_path).convert("RGB")
     arr = np.array(img)
@@ -199,12 +200,19 @@ def decode_dual_image(img_path, delim, pass1="", pass2=""):
     layer1_text, layer1_was_enc = _try_decrypt_payload(layer1_bytes, pass1)
     if layer1_text is None:
         return "", 0, False, ""
-    if pass2 and layer2_bytes is not None:
-        layer2_text, layer2_was_enc = _try_decrypt_payload(layer2_bytes, pass2)
+    if layer2_bytes:
+        layer2_text, layer2_was_enc = (None, False)
+        if pass2:
+            layer2_text, layer2_was_enc = _try_decrypt_payload(layer2_bytes, pass2)
+        if layer2_text is None and pass1 and pass1 != pass2:
+            layer2_text, layer2_was_enc = _try_decrypt_payload(layer2_bytes, pass1)
+        if layer2_text is None and not pass2:
+            layer2_text, layer2_was_enc = _try_decrypt_payload(layer2_bytes, "")
         if layer2_text is not None:
             return layer2_text, 2, layer2_was_enc, layer1_text
+        if pass2:
+            raise ValueError("Incorrect password.")
     return layer1_text, 1, layer1_was_enc, layer1_text
-
 def detect_message_format(img_path, delim):
     try:
         raw_bytes = _extract_raw_lsb_bytes(img_path)
@@ -249,3 +257,33 @@ def check_image_for_message(img_path, delim):
             return True, True
     except Exception:
             return False, False
+
+
+def extract_dual_layer2_blob(img_path, delim):
+    raw_bytes = _extract_raw_lsb_bytes(img_path)
+    if not raw_bytes:
+        return None
+    start = raw_bytes.find(DUAL_HEADER)
+    if start == -1:
+        return None
+    d = delim.encode("utf-8")
+    base = start + len(DUAL_HEADER)
+    first = raw_bytes.find(d, base)
+    if first == -1:
+        return None
+    second = raw_bytes.find(d, first + len(d))
+    if second == -1:
+        raise ValueError("Layer 2 terminator not found.")
+    return raw_bytes[first + len(d):second]
+
+
+def encode_dual_image_from_blobs(img_path, msg1, pass1, layer2_blob, dual_header_bytes, delim, save_path, out_format="PNG"):
+    if not layer2_blob:
+        raise ValueError("No Layer 2 content to preserve.")
+    d = delim.encode("utf-8")
+    if d in layer2_blob:
+        raise ValueError("Layer 2 content contains the delimiter.")
+    payload1 = msg1.encode("utf-8")
+    if pass1: payload1 = _encrypt_bytes_aes(payload1, pass1)
+    full_data = dual_header_bytes + payload1 + d + layer2_blob + d
+    _embed_bits_and_save(img_path, full_data, save_path, out_format)
