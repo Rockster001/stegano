@@ -52,6 +52,29 @@ already is.
 - The interface remains useful without requiring frequent use or memorization
   of hidden rules.
 
+## Owner-requested worklist
+
+These are accepted items to investigate or address; they are not yet
+implemented.
+
+1. Investigate startup sequencing: background music can be heard for several
+   seconds before the main window appears. Identify why this happens and agree
+   on the desired startup behavior before changing it.
+2. Remember Load and Save folders independently. Each operation should reopen
+   at the most recently used folder for that operation, rather than sharing one
+   folder preference. Confirm appropriate first-run defaults when implementing.
+
+## Exploratory idea
+
+The owner is considering whether future versions could embed and recover image,
+audio, or video files in addition to text. This is not yet a scoped or approved
+feature. The owner currently leans toward built-in media handling rather than
+relying on external applications, but has not made a final decision. Explore
+capacity, format-support, and workflow tradeoffs before implementation. File
+recovery does not inherently require built-in playback: Stegano could save the
+recovered file and let the operating system open it. Any design must preserve
+the independence of message layers and existing text compatibility.
+
 ## How to evolve the app
 
 1. Treat deliberate owner choices as product requirements, not defects.
