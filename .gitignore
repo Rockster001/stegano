@@ -1,5 +1,11 @@
 .aider*
 .env
-.env
 __pycache__
 *.pyc
+
+# build output (created by build_exe.bat)
+build/
+dist/
+build_venv/
+build_venv_312/
+*.spec.bak

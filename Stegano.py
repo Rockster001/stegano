@@ -6,11 +6,40 @@ import html
 import wave
 import hashlib
 import itertools
+import traceback
 import platform
+import tempfile
 from datetime import datetime
 import numpy as np
 import secrets
-from steganography_utils import _encrypt_bytes_aes, _decrypt_bytes_aes, _encrypt_bytes, encode_image, encode_dual_image, decode_image, decode_dual_image, _embed_bits_and_save, _extract_raw_lsb_bytes, detect_message_format, _extract_dual_layers, _try_decrypt_payload, extract_dual_layer2_blob, encode_dual_image_from_blobs
+from stegano_config import (
+    AES_IV_SIZE,
+    AES_KEY_SIZE,
+    AES_SALT_SIZE,
+    DEFAULT_FONT_SIZE,
+    DELIMITER,
+    DUAL_HEADER,
+    LEGACY_HEADER,
+    MAX_FILE_SIZE_MB,
+    MAX_SAVED_PASSWORDS,
+    PBKDF2_ITERATIONS,
+    STEALTH_HEADER,
+    THUMBNAIL_SIZE,
+    TOOLTIP_DELAY_MS,
+    TOOLTIP_HEIGHT,
+    TOOLTIP_WIDTH,
+    VERSION,
+    WATERMARK_MAX_SCALE,
+    WATERMARK_MAX_SIZE,
+    WATERMARK_MIN_SCALE,
+    WATERMARK_MIN_SIZE,
+    WATERMARK_REF_SIZE,
+    ZOOM_MAX,
+    ZOOM_MIN,
+    ZOOM_STEP,
+    TOAST_DURATION_MS,
+)
+from stegano_core import AES_GCM_MAGIC, _encrypt_bytes_aes, _decrypt_bytes_aes, _encrypt_bytes, encode_image, encode_dual_image, decode_image, decode_dual_image, _embed_bits_and_save, _extract_raw_lsb_bytes, detect_message_format, _extract_dual_layers, _try_decrypt_payload, extract_dual_layer2_blob, encode_dual_image_from_blobs, estimate_encrypted_payload_len, clear_lsb_image
 from PIL import Image, ExifTags
 from PyQt5.QtGui import QColor, QPalette, QFontMetrics, QKeySequence
 os.environ["QT_LOGGING_RULES"] = ".warning=false;qt.qpa.=false;libpng.*=false"
@@ -22,6 +51,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, pyqtSignal, QThread, QTimer, QSettings, QUrl, QEvent, QPoint, QMargins
 from PyQt5.QtGui import QFont, QPixmap, QCursor, QDesktopServices, QIcon
 from PyQt5.QtMultimedia import QSoundEffect, QMediaPlayer, QMediaContent
+from app_paths import resource_path, images_dir, ensure_starter_images, write_crash_log
 from audio_manager import AudioManager
 from password_utils import (
     estimate_password_strength,
@@ -37,44 +67,39 @@ from ui_components import (
     convert_links_to_html
 )
 from workers import EncodeWorker, DecodeWorker, ImageLoadWorker
+from saved_password_store import SavedPasswordStorageError, SavedPasswordStore
 
-STEALTH_HEADER = hashlib.sha256(b"STEGO_MAGIC").digest()
-LEGACY_HEADER = b"STEGO_MAGIC"
-DUAL_HEADER = hashlib.sha256(b"STEGO_DUAL_MAGIC").digest()
+from stegano_config import Config
 
+VERSION = Config.VERSION
+STEALTH_HEADER = Config.STEALTH_HEADER
+LEGACY_HEADER = Config.LEGACY_HEADER
+DUAL_HEADER = Config.DUAL_HEADER
+DELIMITER = Config.DELIMITER
+THUMBNAIL_SIZE = Config.THUMBNAIL_SIZE
+MIN_FONT_SIZE = Config.MIN_FONT_SIZE
+MAX_FONT_SIZE = Config.MAX_FONT_SIZE
+FONT_STEP = Config.FONT_STEP
+DEFAULT_FONT_SIZE = Config.DEFAULT_FONT_SIZE
+TOOLTIP_WIDTH = Config.TOOLTIP_WIDTH
+TOOLTIP_HEIGHT = Config.TOOLTIP_HEIGHT
+TOOLTIP_DELAY_MS = Config.TOOLTIP_DELAY_MS
+MAX_SAVED_PASSWORDS = Config.MAX_SAVED_PASSWORDS
+MAX_FILE_SIZE_MB = Config.MAX_FILE_SIZE_MB
+WATERMARK_MIN_SIZE = Config.WATERMARK_MIN_SIZE
+WATERMARK_MAX_SIZE = Config.WATERMARK_MAX_SIZE
+WATERMARK_REF_SIZE = Config.WATERMARK_REF_SIZE
+WATERMARK_MIN_SCALE = Config.WATERMARK_MIN_SCALE
+WATERMARK_MAX_SCALE = Config.WATERMARK_MAX_SCALE
+ZOOM_STEP = Config.ZOOM_STEP
+ZOOM_MIN = Config.ZOOM_MIN
+ZOOM_MAX = Config.ZOOM_MAX
+AES_KEY_SIZE = Config.AES_KEY_SIZE
+AES_SALT_SIZE = Config.AES_SALT_SIZE
+AES_IV_SIZE = Config.AES_IV_SIZE
+PBKDF2_ITERATIONS = Config.PBKDF2_ITERATIONS
+TOAST_DURATION_MS = Config.TOAST_DURATION_MS
 
-class Config:
-    VERSION = os.path.basename(__file__).replace("Stegano", "").replace(".py", "")
-    STEALTH_HEADER = hashlib.sha256(b"STEGO_MAGIC").digest()
-    LEGACY_HEADER = b"STEGO_MAGIC"
-    DUAL_HEADER = hashlib.sha256(b"STEGO_DUAL_MAGIC").digest()
-    DELIMITER = "\x00\x00\x03"
-    THUMBNAIL_SIZE = 128
-    MIN_FONT_SIZE = 10
-    MAX_FONT_SIZE = 48
-    FONT_STEP = 2
-    DEFAULT_FONT_SIZE = 18
-    TOOLTIP_WIDTH = 400
-    TOOLTIP_HEIGHT = 120
-    TOOLTIP_DELAY_MS = 150
-    MAX_SAVED_PASSWORDS = 10
-    MAX_FILE_SIZE_MB = 50
-    WATERMARK_MIN_SIZE = 16
-    WATERMARK_MAX_SIZE = 800
-    WATERMARK_REF_SIZE = 100
-    WATERMARK_MIN_SCALE = 0.1
-    WATERMARK_MAX_SCALE = 5.0
-    ZOOM_STEP = 0.15
-    ZOOM_MIN = 0.05
-    ZOOM_MAX = 5.0
-    AES_KEY_SIZE = 32
-    AES_SALT_SIZE = 16
-    AES_IV_SIZE = 16
-    PBKDF2_ITERATIONS = 100000
-    TOAST_DURATION_MS = 3000
-
-
-globals().update({k: v for k, v in dict(vars(Config)).items() if not k.startswith(chr(95))})
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s: %(message)s")
 logger = logging.getLogger("Stegano")
 
@@ -121,13 +146,6 @@ QListWidget::item:selected { background-color: rgba(74, 133, 184, 0.6); }
 QDialog { background-color: #1e1e1e; color: #E0E0E0; }
 """
 
-
-
-
-def estimate_encrypted_payload_len(raw_len):
-    padded_len = ((raw_len // 16) + 1) * 16
-    return AES_SALT_SIZE + AES_IV_SIZE + padded_len
-
 def check_image_for_message(img_path, delim):
     try:
         img = Image.open(img_path).convert("RGB")
@@ -149,6 +167,8 @@ def check_image_for_message(img_path, delim):
         d_idx = raw_bytes[payload_start:].find(delim_bytes)
         if d_idx == -1: return False, False
         payload_bytes = raw_bytes[payload_start : payload_start + d_idx]
+        if payload_bytes.startswith(AES_GCM_MAGIC):
+            return True, True
         try:
             payload_bytes.decode("utf-8")
             return True, False
@@ -157,10 +177,43 @@ def check_image_for_message(img_path, delim):
     except Exception:
         return False, False
 
+
+def _paths_are_same_file(path_a, path_b):
+    if not path_a or not path_b:
+        return False
+    try:
+        return os.path.samefile(path_a, path_b)
+    except OSError:
+        normalized_a = os.path.normcase(os.path.realpath(os.path.abspath(path_a)))
+        normalized_b = os.path.normcase(os.path.realpath(os.path.abspath(path_b)))
+        return normalized_a == normalized_b
+
+
+def _unique_reuse_output_name(directory):
+    base_name = "reused_image_steganosed"
+    extensions = (".png", ".bmp", ".tiff", ".tif", ".webp")
+    candidate = base_name
+    suffix = 2
+    while any(os.path.exists(os.path.join(directory, candidate + ext)) for ext in extensions):
+        candidate = f"{base_name}_{suffix}"
+        suffix += 1
+    return candidate
+
+
 class SteganographyApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.settings = QSettings("Steganosaurus", "SteganoApp")
+        self._password_storage_warning = None
+        self._last_shown_password_storage_warning = None
+        self._password_storage_blocked = False
+        self._ui_ready = False
+        self._saved_password_dialog = None
+        self._password_store = SavedPasswordStore(
+            self.settings,
+            self._get_local_key().hex(),
+            _decrypt_bytes_aes,
+        )
         self.magic_header = STEALTH_HEADER
         self.delimiter = DELIMITER
         self.current_image_path = ""
@@ -173,6 +226,11 @@ class SteganographyApp(QMainWindow):
         self.offset = None
         self.encoderWorker = self.decoderWorker = self.loaderWorker = None
         self._pending_load_path = ""
+        self._clean_cover_tempdir = None
+        self._clean_cover_path = None
+        self._cleared_source_path = None
+        self._pending_clean_cover_tempdir = None
+        self._pending_clean_cover_path = None
         self._last_focused_pwd_field = None
         self.state = {
             'layer2_active': False,
@@ -233,6 +291,9 @@ class SteganographyApp(QMainWindow):
         self._carry_composition = True
         self.setAcceptDrops(True)
         self._init_ui()
+        self._ui_ready = True
+        if self._password_storage_warning:
+            QTimer.singleShot(0, self._show_password_storage_warning)
         QTimer.singleShot(500, self._update_watermark)
         self._restore_window_state()
 
@@ -266,6 +327,7 @@ class SteganographyApp(QMainWindow):
                 event.ignore()
                 return
         self._cleanup_workers()
+        self._cleanup_clean_cover_tempdirs()
         if hasattr(self, 'active_viewer') and self.active_viewer:
             try:
                 self.active_viewer.close()
@@ -281,27 +343,46 @@ class SteganographyApp(QMainWindow):
         return hashlib.sha256(seed).digest()
 
     def _load_saved_passwords(self):
-        stored = self.settings.value("savedPasswords", [], type=list)
-        key_hex = self._get_local_key().hex()
-        result = []
-        for item in stored:
-            try:
-                decrypted = _decrypt_bytes_aes(bytes.fromhex(item), key_hex)
-                if decrypted is not None:
-                    result.append(decrypted.decode("utf-8"))
-            except Exception:
-                continue
-        return result
+        try:
+            passwords = self._password_store.load()
+        except SavedPasswordStorageError as exc:
+            self._password_storage_blocked = True
+            self._report_password_storage_issue(str(exc))
+            return []
+        if self._password_store.last_warning:
+            self._report_password_storage_issue(self._password_store.last_warning)
+        return passwords
 
     def _persist_saved_passwords(self):
-        key_hex = self._get_local_key().hex()
-        encrypted_list = []
-        for pwd in self._saved_passwords:
-            try:
-                encrypted_list.append(_encrypt_bytes_aes(pwd.encode("utf-8"), key_hex).hex())
-            except Exception:
-                continue
-        self.settings.setValue("savedPasswords", encrypted_list)
+        if self._password_storage_blocked:
+            return False
+        try:
+            self._password_store.save(self._saved_passwords)
+        except SavedPasswordStorageError as exc:
+            self._report_password_storage_issue(str(exc))
+            return False
+        if self._password_store.last_warning:
+            self._report_password_storage_issue(self._password_store.last_warning)
+            return False
+        return True
+
+    def _report_password_storage_issue(self, message):
+        self._password_storage_blocked = True
+        self._password_storage_warning = message
+        logger.error("Saved-password storage: %s", message)
+        if self._ui_ready:
+            self._show_password_storage_warning()
+
+    def _show_password_storage_warning(self):
+        message = self._password_storage_warning
+        if not message or message == self._last_shown_password_storage_warning:
+            return
+        self._last_shown_password_storage_warning = message
+        QMessageBox.warning(
+            self,
+            "Saved passwords",
+            message + "\n\nYour messages and images are unaffected.",
+        )
 
     def _restore_window_state(self):
         screen = QApplication.primaryScreen()
@@ -354,6 +435,98 @@ class SteganographyApp(QMainWindow):
         for w in [self.encoderWorker, self.decoderWorker, self.loaderWorker]:
             if w and w.isRunning(): w.wait()
 
+    def _cleanup_tempdir(self, tempdir):
+        if tempdir is None:
+            return
+        try:
+            tempdir.cleanup()
+        except OSError as e:
+            logging.warning("Could not remove temporary reuse image: %s", e)
+
+    def _cleanup_clean_cover_tempdirs(self):
+        self._cleanup_tempdir(self._clean_cover_tempdir)
+        self._cleanup_tempdir(self._pending_clean_cover_tempdir)
+        self._clean_cover_tempdir = None
+        self._clean_cover_path = None
+        self._cleared_source_path = None
+        self._pending_clean_cover_tempdir = None
+        self._pending_clean_cover_path = None
+
+    def _clear_image_for_reuse(self):
+        if self.worker_running:
+            return
+        if not self.current_image_path:
+            self._status("No image loaded", "error")
+            return
+        if not os.path.isfile(self.current_image_path):
+            self._status("The loaded image file is no longer available.", "error")
+            return
+        if not self.text_area.isReadOnly() and self._has_live_composition():
+            reply = QMessageBox.question(
+                self, "Clear for Reuse",
+                "This will clear the current message and password fields. The original image file will remain unchanged. Continue?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if reply != QMessageBox.Yes:
+                return
+
+        source_path = self._clean_cover_path or self.current_image_path
+        try:
+            tempdir = tempfile.TemporaryDirectory(prefix="stegano-reuse-")
+        except OSError as e:
+            self._status(f"Could not prepare image for reuse: {e}", "error")
+            return
+        output_path = os.path.join(tempdir.name, "clean_cover.png")
+        self._pending_clean_cover_tempdir = tempdir
+        self._pending_clean_cover_path = output_path
+        self.text_area.setEnabled(False)
+        self._set_worker(True)
+        self.encoderWorker = EncodeWorker(clear_lsb_image, (source_path, output_path))
+        self.encoderWorker.encoding_finished.connect(self._on_clear_for_reuse_success)
+        self.encoderWorker.error.connect(self._on_clear_for_reuse_error)
+        self.encoderWorker.start()
+
+    def _on_clear_for_reuse_success(self, _result):
+        source_path = self._cleared_source_path or self.current_image_path
+        previous_tempdir = self._clean_cover_tempdir
+        self._clean_cover_tempdir = self._pending_clean_cover_tempdir
+        self._clean_cover_path = self._pending_clean_cover_path
+        self._cleared_source_path = source_path
+        self.current_image_path = self._clean_cover_path
+        self._pending_clean_cover_tempdir = None
+        self._pending_clean_cover_path = None
+        if previous_tempdir is not self._clean_cover_tempdir:
+            self._cleanup_tempdir(previous_tempdir)
+
+        self.pwd_input.clear()
+        self.pwd_input2.clear()
+        self._reset_dual_compose_state()
+        self._loaded_image_format = "none"
+        self._loaded_image_has_message = False
+        self._loaded_image_is_encrypted = False
+        self.original_message = ""
+        self.text_area.clear()
+        self.text_area.setReadOnly(False)
+        self.watermark.setText("ENCODE")
+        self._update_watermark()
+        self.edit_btn.hide()
+        self.copy_btn.hide()
+        self.save_btn.show()
+        self.cancel_btn.show()
+        self.text_area.setEnabled(True)
+        self.text_area.setFocus()
+        self._update_counter()
+        self._set_worker(False)
+        self._status("Image cleared for reuse. The original file is unchanged.", "success")
+
+    def _on_clear_for_reuse_error(self, error):
+        self._cleanup_tempdir(self._pending_clean_cover_tempdir)
+        self._pending_clean_cover_tempdir = None
+        self._pending_clean_cover_path = None
+        self.text_area.setEnabled(True)
+        self._set_worker(False)
+        self._status(f"Could not clear image for reuse: {error}", "error")
+
     def _save_password_to_list(self, password):
         if not password or password.strip() == "":
             return
@@ -365,14 +538,30 @@ class SteganographyApp(QMainWindow):
 
     def _show_saved_passwords_dialog(self):
         self.audio.play_sfx('click')
+        if self._saved_password_dialog and self._saved_password_dialog.isVisible():
+            self._saved_password_dialog.raise_()
+            self._saved_password_dialog.activateWindow()
+            return
         dialog = SavedPasswordsDialog(self._saved_passwords, self)
-        if dialog.exec_() == QDialog.Accepted and dialog.selected_password:
+        self._saved_password_dialog = dialog
+        dialog.finished.connect(self._on_saved_passwords_dialog_finished)
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
+    def _on_saved_passwords_dialog_finished(self, result):
+        dialog = self._saved_password_dialog
+        if dialog is None:
+            return
+        self._saved_password_dialog = None
+        if result == QDialog.Accepted and dialog.selected_password:
             target = self._last_focused_pwd_field if self._last_focused_pwd_field in (self.pwd_input, self.pwd_input2) else self.pwd_input
             target.setText(dialog.selected_password)
             if self.current_image_path and os.path.exists(self.current_image_path):
                 QTimer.singleShot(100, self._attempt_decode)
         self._saved_passwords = dialog.passwords
         self._persist_saved_passwords()
+        dialog.deleteLater()
 
     def resizeEvent(self, event):
         if hasattr(self, 'background') and self.background:
@@ -495,7 +684,7 @@ class SteganographyApp(QMainWindow):
         self.background = QLabel(container)
         self.background.setScaledContents(True)
         self.background.lower()
-        p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "STEGANO.png")
+        p = resource_path("STEGANO.png")
         if os.path.exists(p):
             with _SuppressStderr():
                 pix = QPixmap(p)
@@ -542,6 +731,28 @@ class SteganographyApp(QMainWindow):
         if b < 1024: return f"{b} B"
         if b < 1048576: return f"{b/1024:.1f} KB"
         return f"{b/1048576:.1f} MB"
+
+    def _set_thumb_placeholder(self, text="Drop image here"):
+        self.thumb.setText(text)
+        self.thumb.setAlignment(Qt.AlignCenter)
+        self.thumb.setStyleSheet(
+            "background: rgba(40, 40, 40, 100); "
+            "border: 2px dashed #4A85B8; "
+            "border-radius: 8px; "
+            "color: #E0E0E0; "
+            "font-size: 16px; "
+            "font-weight: 600; "
+            "padding: 8px;"
+        )
+
+    def _clear_thumb_placeholder(self):
+        self.thumb.setText("")
+        self.thumb.setStyleSheet(
+            "background: rgba(40, 40, 40, 100); "
+            "border: 2px solid #555; "
+            "border-radius: 8px; "
+            "color: #fff;"
+        )
 
     def _show_keyboard_shortcuts(self):
         shortcuts_text = """
@@ -727,10 +938,9 @@ class SteganographyApp(QMainWindow):
         self._register_tooltip(self.meta_display, "Shows file information, dimensions, capacity, and EXIF data for the loaded image.")
         meta_layout.addWidget(self.meta_content)
         il.addWidget(self.meta_frame, 2)
-        self.thumb = QLabel("No image")
+        self.thumb = QLabel()
         self.thumb.setFixedSize(256, 256)
-        self.thumb.setAlignment(Qt.AlignCenter)
-        self.thumb.setStyleSheet("background:rgba(40,40,40,100); border:2px solid #555; border-radius:8px; color:#fff;")
+        self._set_thumb_placeholder("Drop image here")
         il.addWidget(self.thumb)
         self._register_tooltip(self.thumb, "Preview of the loaded image. Click to view full size. Double-click to load a new image. You can also drag-and-drop an image here.")
         self.thumb.setCursor(Qt.PointingHandCursor)
@@ -747,6 +957,14 @@ class SteganographyApp(QMainWindow):
         self.view_btn.clicked.connect(self._show_full_img)
         bc.addWidget(self.view_btn)
         self._register_tooltip(self.view_btn, "Open the loaded image in a zoomable full-screen viewer.")
+        self.clear_reuse_btn = QPushButton("Clear for Reuse")
+        self.clear_reuse_btn.setEnabled(False)
+        self.clear_reuse_btn.clicked.connect(self._clear_image_for_reuse)
+        bc.addWidget(self.clear_reuse_btn)
+        self._register_tooltip(
+            self.clear_reuse_btn,
+            "Reset the RGB least-significant-bit plane in a temporary working copy without decoding or passwords. The original image file is unchanged."
+        )
         il.addLayout(bc)
         ml.addWidget(ip)
         self.ws_frame = QFrame()
@@ -999,7 +1217,7 @@ class SteganographyApp(QMainWindow):
         self._clear_pass_field_highlight()
 
     def _switch_to_layer(self, target):
-        if self._editing_layer == target:
+        if self._editing_layer == target and not self.text_area.isReadOnly():
             return
         if not self.text_area.isReadOnly():
             if self._editing_layer == 1:
@@ -1009,10 +1227,10 @@ class SteganographyApp(QMainWindow):
         self._editing_layer = target
         self._currently_shown_layer = target
         if self.text_area.isReadOnly():
-            if target == 1:
-                self.text_area.setHtml(convert_links_to_html(self._decoded_layer1_message))
-            else:
-                self.text_area.setHtml(convert_links_to_html(self._decoded_layer2_message))
+            shown = self._decoded_layer1_message if target == 1 else self._decoded_layer2_message
+            if shown:
+                self.original_message = shown
+            self.text_area.setHtml(convert_links_to_html(shown))
         else:
             if target == 1:
                 if not self._message1_buffer and self._decoded_layer1_message:
@@ -1079,13 +1297,8 @@ class SteganographyApp(QMainWindow):
                 self._decoded_layer2_message = msg
             else:
                 self._decoded_layer2_message = ""
-            if fmt == "dual" and layer == 2 and layer1_msg:
-                self._currently_shown_layer = 1
-                self.original_message = layer1_msg
-                shown = layer1_msg
-            else:
-                self._currently_shown_layer = layer
-                shown = msg
+            self._currently_shown_layer = layer
+            shown = msg
             self.watermark.setText("DECODED")
             self._update_watermark()
             self.text_area.setHtml(convert_links_to_html(shown))
@@ -1138,7 +1351,9 @@ class SteganographyApp(QMainWindow):
 
     def eventFilter(self, obj, event):
         if hasattr(self, 'pwd_input') and hasattr(self, 'pwd_input2') and obj in (self.pwd_input, self.pwd_input2):
-            if event.type() == QEvent.FocusIn:
+            if event.type() == QEvent.FocusIn or (
+                event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton
+            ):
                 self._last_focused_pwd_field = obj
                 if obj is self.pwd_input:
                     self._switch_to_layer(1)
@@ -1300,7 +1515,7 @@ class SteganographyApp(QMainWindow):
     def _select_image(self):
         if self.worker_running: return
         self.audio.play_sfx('click')
-        p, _ = QFileDialog.getOpenFileName(self, "Select Image", self.settings.value("lastDir", os.path.dirname(os.path.abspath(__file__))), "Images (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.webp)")
+        p, _ = QFileDialog.getOpenFileName(self, "Select Image", self.settings.value("lastDir", images_dir()), "Images (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.webp)")
         if not p: return
         self.settings.setValue("lastDir", os.path.dirname(p))
         self._load_image(p)
@@ -1308,7 +1523,7 @@ class SteganographyApp(QMainWindow):
     def _replace_image(self):
         if self.worker_running: return
         self.audio.play_sfx('click')
-        p, _ = QFileDialog.getOpenFileName(self, "Replace Image", self.settings.value("lastDir", os.path.dirname(os.path.abspath(__file__))), "Images (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.webp)")
+        p, _ = QFileDialog.getOpenFileName(self, "Replace Image", self.settings.value("lastDir", images_dir()), "Images (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.webp)")
         if not p: return
         self.settings.setValue("lastDir", os.path.dirname(p))
         self._load_image(p, carry_composition=True)
@@ -1363,6 +1578,7 @@ class SteganographyApp(QMainWindow):
         except Exception as e:
             self._status(f"Error processing image: {str(e)}", "error")
             return
+        self._cleanup_clean_cover_tempdirs()
         
         # Preserve composition if live and carry_composition is True
         if self._has_live_composition() and self._carry_composition:
@@ -1375,8 +1591,9 @@ class SteganographyApp(QMainWindow):
         with _SuppressStderr():
             thumb_pixmap = QPixmap(p)
         self.thumb.setPixmap(thumb_pixmap.scaled(THUMBNAIL_SIZE * 2, THUMBNAIL_SIZE * 2, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        self.thumb.setText("")
+        self._clear_thumb_placeholder()
         self.view_btn.setEnabled(True)
+        self.clear_reuse_btn.setEnabled(True)
         self.meta_display.setHtml(self._extract_metadata(p))
         
         # Only process embedded message if no live composition or not carrying composition
@@ -1429,6 +1646,7 @@ class SteganographyApp(QMainWindow):
 
     def _on_image_load_error(self, e):
         self._set_worker(False)
+        self._set_thumb_placeholder("Load failed")
         self._status(f"Error loading image: {e}", "error")
 
     def _update_counter(self):
@@ -1506,7 +1724,7 @@ class SteganographyApp(QMainWindow):
         self.setCursor(Qt.BusyCursor if r else (Qt.WhatsThisCursor if self.help_mode_active else Qt.ArrowCursor))
         if r: self.loading_spinner.start_spinning()
         else: self.loading_spinner.stop_spinning()
-        for x in (self.sel_btn, self.view_btn, self.font_down, self.font_up, self.save_btn, self.cancel_btn,
+        for x in (self.sel_btn, self.view_btn, self.clear_reuse_btn, self.font_down, self.font_up, self.save_btn, self.cancel_btn,
                   self.edit_btn, self.copy_btn, self.pwd_input, self.pwd_memory_btn, self.pwd_show_btn,
                   self.pwd_input2, self.pwd_show_btn2):
             if x: x.setEnabled(not r)
@@ -1553,13 +1771,23 @@ class SteganographyApp(QMainWindow):
             delim_overhead = len(self.delimiter)
         if (header_len + total_payload + delim_overhead) * 8 > self.available_capacity_bits:
             max_chars = (self.available_capacity_bits // 8) - (header_len + delim_overhead)
-            if pass1 or is_dual:
-                max_chars = max(0, max_chars - AES_SALT_SIZE - AES_IV_SIZE - 16)
+            encrypted_layers = int(bool(pass1)) + int(
+                is_dual and not layer2_rides and bool(pass2 or pass1)
+            )
+            if encrypted_layers:
+                fixed_overhead = encrypted_layers * self._estimate_encrypted_len(0)
+                max_chars = max(0, ((max_chars - fixed_overhead) * 3) // 4)
             return QMessageBox.warning(self, "Capacity", f"Message exceeds capacity. Max approx {max_chars} chars total.")
-        base = os.path.splitext(os.path.basename(self.current_image_path))[0]
-        default_name = f"{base}_steganosed"
+        source_path = self._cleared_source_path or self.current_image_path
+        if self._cleared_source_path:
+            save_directory = os.path.dirname(self._cleared_source_path)
+            default_name = _unique_reuse_output_name(save_directory)
+        else:
+            save_directory = self.settings.value("lastDir", "") or os.path.dirname(source_path)
+            base = os.path.splitext(os.path.basename(source_path))[0]
+            default_name = f"{base}_steganosed"
         filters = "All Lossless Formats (*.png *.bmp *.tiff *.tif *.webp);;PNG Files (*.png);;BMP Files (*.bmp);;TIFF Files (*.tiff *.tif);;WebP Files (*.webp)"
-        s, selected_filter = QFileDialog.getSaveFileName(self, "Save Image", os.path.join(self.settings.value("lastDir", ""), default_name), filters)
+        s, selected_filter = QFileDialog.getSaveFileName(self, "Save Image", os.path.join(save_directory, default_name), filters)
         if not s: return
         ext = os.path.splitext(s)[1].lower()
         if ext == ".png": out_fmt = "PNG"
@@ -1572,15 +1800,22 @@ class SteganographyApp(QMainWindow):
             elif "WebP" in selected_filter: out_fmt, ext = "WebP", ".webp"
             else: out_fmt, ext = "PNG", ".png"
             s += ext
+        if self._cleared_source_path and _paths_are_same_file(s, self._cleared_source_path):
+            QMessageBox.warning(
+                self, "Choose a New File",
+                "Clear for Reuse protects the original image. Choose a different output filename."
+            )
+            return
         self.settings.setValue("lastDir", os.path.dirname(s))
         self._set_worker(True)
         self.audio.play_sfx('action')
+        cover_path = self._clean_cover_path or self.current_image_path
         if is_dual and layer2_rides:
-            self.encoderWorker = EncodeWorker(encode_dual_image_from_blobs, (self.current_image_path, m1, pass1, self._decoded_layer2_blob, DUAL_HEADER, self.delimiter, s, out_fmt))
+            self.encoderWorker = EncodeWorker(encode_dual_image_from_blobs, (cover_path, m1, pass1, self._decoded_layer2_blob, DUAL_HEADER, self.delimiter, s, out_fmt))
         elif is_dual:
-            self.encoderWorker = EncodeWorker(encode_dual_image, (self.current_image_path, m1, m2, s, DUAL_HEADER, self.delimiter, out_fmt, pass1, pass2))
+            self.encoderWorker = EncodeWorker(encode_dual_image, (cover_path, m1, m2, s, DUAL_HEADER, self.delimiter, out_fmt, pass1, pass2))
         else:
-            self.encoderWorker = EncodeWorker(encode_image, (self.current_image_path, m1, s, self.magic_header, self.delimiter, out_fmt, pass1))
+            self.encoderWorker = EncodeWorker(encode_image, (cover_path, m1, s, self.magic_header, self.delimiter, out_fmt, pass1))
         self.encoderWorker.encoding_finished.connect(lambda: self._on_encode_success(m1, m2, s))
         self.encoderWorker.error.connect(self._on_encode_error)
         self.encoderWorker.start()
@@ -1632,6 +1867,29 @@ if __name__ == "__main__":
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
-    window = SteganographyApp()
-    window.show()
+
+    # Release checklist: first run seeds Documents\Stegano\Images with the
+    # starter images, so the Select Image dialog opens somewhere useful.
+    ensure_starter_images()
+
+    icon_path = resource_path("STEGANO.png")
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
+
+    # In the packaged (windowed) app nothing is printed to a console, so
+    # make sure any crash lands in Documents\Stegano\crash.log instead.
+    sys.excepthook = lambda t, v, tb: write_crash_log(
+        "".join(traceback.format_exception(t, v, tb)))
+
+    try:
+        window = SteganographyApp()
+        window.show()
+    except Exception:
+        crash_file = write_crash_log(traceback.format_exc())
+        from PyQt5.QtWidgets import QMessageBox
+        QMessageBox.critical(
+            None, "Stegano - startup error",
+            "Stegano failed to start.\n\nDetails were written to:\n%s"
+            % (crash_file or "crash.log (Documents\\Stegano)"))
+        raise
     sys.exit(app.exec_())

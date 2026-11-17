@@ -12,6 +12,8 @@ Type: /add Stegano.py then press Enter
 
 Type: /add SESSION\_NOTES.md then press Enter
 
+Type: /add PRODUCT\_VISION.md then press Enter
+
 Now type the task instruction. Read "WHAT TO DO NEXT" below and type it in.
 
 HOW TO FINISH A WORK SESSION (follow top to bottom, in order)
@@ -48,6 +50,10 @@ Program broken = do not save. Ask a browser AI, paste the last error line.
 
 WHAT TO DO NEXT
 
+Before proposing or making product changes, read PRODUCT\_VISION.md. It records
+the owner's enduring direction and intentional decisions; do not reopen those
+decisions as defects or assume deferred features are approved for implementation.
+
 The dual-password feature is COMPLETE and verified: dual saves work, both layers decode,
 
 Enter in Pass 2 reveals layer 2, deleting Pass 2 + Enter un-reveals to layer 1, and the
@@ -58,9 +64,17 @@ The double-click password popup is implemented (double-click either Pass field o
 
 saved-passwords dialog; the key icon button is hidden).
 
-REMAINING BACKLOG: password bar redesign; requirements.txt; README; the executable
+REMAINING FOR V1 RELEASE (11/11/2026): code work DONE - requirements.txt; README;
 
-(PyInstaller); cleanup pass (test images in vault); state-matrix test session (optional).
+app_paths.py (freeze support + first-run seeding); VERSION 1.0; crash log; stegano.spec;
+
+build_exe.bat; cleanup.bat; stegano.ico. STILL TO DO ON WINDOWS: cleanup.bat, save.bat,
+
+build_exe.bat, test dist\Stegano.exe, upload it to GitHub Releases.
+
+MOVED TO V2 (owner ruling 11/11/2026): password bar redesign; Phase 2 (PHASE2_DESIGN.md);
+
+multi-message concept (parked above); state-matrix test session (optional).
 
 Also: test files now belong in C:\\Dev\\SteganoTest (outside the repo) - see BACKLOG below.
 
@@ -338,15 +352,71 @@ unless the owner explicitly re-rules it
 
 RELEASE CHECKLIST (for the executable/release stage)
 
-Ship starter pack of virgin images (curated, variety of sizes)
+Ship starter pack of virgin images (curated, variety of sizes) - DONE 11/11/2026:
 
-First-run: seed C:\\Users<name>\\Documents\\Stegano\\Images with the starters
+the 4 Virgin Images ship inside the exe (spec 'starters' folder)
 
-Select Image dialog: first-run default = that folder (lastDir memory unchanged
+First-run: seed Documents\Stegano\Images with the starters - DONE 11/11/2026:
 
-after first selection)
+app_paths.ensure_starter_images() (never overwrites)
 
-Ensure NO dev/test files ship in the release package
+Select Image dialog: first-run default = that folder - DONE 11/11/2026:
 
-Include requirements.txt and README (the shareability kit)
+(lastDir memory unchanged after first selection)
+
+Ensure NO dev/test files ship in the release package - DONE: the spec bundles
+
+only the listed files; cleanup.bat removes dev clutter from the repo
+
+Include requirements.txt and README (the shareability kit) - DONE
+
+Session 11/11/2026 - V1 release preparation (Z.ai working directly on a repo clone)
+
+WHAT WAS DONE:
+
+app_paths.py (NEW): central path module. resource_path() makes bundled files
+
+(audio, artwork, starter images) work inside a PyInstaller one-file exe;
+
+documents_dir()/images_dir() locate Documents\Stegano\Images (OneDrive-aware);
+
+ensure_starter_images() seeds it on first run, never overwriting anything;
+
+write_crash_log() records failures for the packaged (windowless) app.
+
+audio_manager.py: base_dir now uses resource_path() instead of __file__.
+
+Stegano.py: VERSION is now "1.0" (window title); window icon set from STEGANO.png;
+
+Select Image / Replace Image default folder is Documents\Stegano\Images on first run
+
+(lastDir memory unchanged afterwards); startup seeds the starter images; any crash
+
+is written to Documents\Stegano\crash.log and shown in a message box.
+
+Also: requirements.txt recreated; .gitignore extended (build/, dist/, build_venv/);
+
+stegano.ico generated from STEGANO.png; stegano.spec (onefile recipe bundling the
+
+sfx, Idle.mp3, idle.wav, STEGANO.png and the 4 Virgin Images as 'starters');
+
+build_exe.bat (double-click Windows build, creates build_venv); cleanup.bat (moves
+
+test images to C:\Dev\SteganoTest, deletes fix scripts, broken backups, steg_part
+
+chunks, evidence files, Stegano.bat.bak - all recoverable from git history);
+
+README.md written for the public repo.
+
+STILL TO DO (Windows side, owner): 1) double-click cleanup.bat  2) save.bat
+
+3) build_exe.bat  4) test dist\Stegano.exe (encode/decode, sounds, seeding - delete
+
+the Documents\Stegano folder first to watch it re-seed)  5) GitHub Releases:
+
+Draft a new release, tag v1.0, upload dist\Stegano.exe.
+
+V2 BACKLOG (owner ruling 11/11/2026): password bar redesign; Phase 2
+
+(PHASE2_DESIGN.md); multi-message concept stays parked.
 

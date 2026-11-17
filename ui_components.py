@@ -1,7 +1,7 @@
 import os
 import re
 import html
-from PyQt5.QtWidgets import QLabel, QWidget, QPushButton, QScrollArea, QMainWindow, QSizePolicy
+from PyQt5.QtWidgets import QApplication, QLabel, QWidget, QPushButton, QScrollArea, QMainWindow, QSizePolicy
 from PyQt5.QtCore import Qt, QTimer, QPoint, QEvent
 from PyQt5.QtGui import QPixmap
 import numpy as np
@@ -87,12 +87,15 @@ class ZoomImageViewer(QMainWindow):
     def __init__(self, image_path, parent=None):
         super().__init__(parent)
         self.image_path = image_path
+        self._application = QApplication.instance()
         with _SuppressStderr():
             self.original_pixmap = QPixmap(image_path)
         self.zoom_factor = 1.0
         self._dragging = False
         self._drag_start_pos = QPoint()
         self._init_ui()
+        if self._application:
+            self._application.installEventFilter(self)
         self._apply_zoom()
     def _init_ui(self):
         self.setWindowTitle("Image Viewer")
@@ -129,6 +132,17 @@ class ZoomImageViewer(QMainWindow):
         self.resize(1000, 700)
         self.showNormal()
     def eventFilter(self, obj, event):
+        if event.type() == QEvent.MouseButtonPress and isinstance(obj, QWidget):
+            widget = obj
+            while widget is not None:
+                if widget is self:
+                    break
+                widget = widget.parentWidget()
+            else:
+                self.close()
+                return True
+        elif obj is self._application and event.type() == QEvent.ApplicationDeactivate:
+            self.close()
         if obj is self.sa.viewport():
             if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
                 self._dragging = True
@@ -148,6 +162,12 @@ class ZoomImageViewer(QMainWindow):
                 self._adjust_zoom(ZOOM_STEP if event.angleDelta().y() > 0 else -ZOOM_STEP)
                 return True
         return super().eventFilter(obj, event)
+
+    def closeEvent(self, event):
+        if self._application:
+            self._application.removeEventFilter(self)
+        super().closeEvent(event)
+
     def _apply_zoom(self):
         if self.original_pixmap.isNull(): return
         self.zoom_factor = max(ZOOM_MIN, min(ZOOM_MAX, self.zoom_factor))

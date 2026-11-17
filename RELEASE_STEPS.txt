@@ -1,0 +1,70 @@
+STEGANO V1 RELEASE - WHAT TO DO, IN ORDER
+=========================================
+
+About 15 minutes of your time, plus one 3-5 minute unattended build.
+Read this file first. You do NOT need to copy RELEASE_STEPS.txt itself
+into the project folder - it is just these instructions.
+
+
+STEP 0 - REVIEW THE SOURCE
+  Review the changes in the working tree and the exact files intended for
+  the public repository. Do not copy every file or use save.bat: it stages
+  everything, including unrelated or sensitive files.
+
+STEP 1 - DECIDE THE RELEASE TERMS
+  The README currently says "All rights reserved". Choose and publish clear
+  terms for distributing the program before making a public release.
+  Review licenses and notices for all bundled third-party dependencies.
+
+STEP 2 - REVIEW RELEASE CONTENTS
+  Check included images, artwork, audio, metadata, and source files for
+  permission to redistribute and for private information. Do not run
+  cleanup.bat as part of this review; it moves and deletes files.
+
+STEP 3 - BUILD THE EXE
+  Double-click  build_exe.bat.
+  Requires Python 3.12 64-bit. The first run creates a dedicated build
+  environment, downloads pinned dependencies, and builds the application.
+  Result:  C:\Dev\Stegano\dist\Stegano.exe
+
+STEP 4 - TEST IT
+  1. Keep any existing Documents\Stegano data. For a first-run test, use a
+     separate Windows account or make a restorable backup first.
+  2. Double-click  dist\Stegano.exe
+     - 10-30 seconds of apparent nothing at first launch is NORMAL
+       (a single-file program unpacks itself first).
+     - Windows may show the blue "Windows protected your PC" box:
+       More info -> Run anyway.
+     - Check: Documents\Stegano\Images appears with 4 starter pictures.
+     - Check: Select Image opens on that folder.
+     - Check: encode a message into a starter picture, decode it back,
+       and that the click/error sounds and idle music play.
+  3. If anything misbehaves: send me  Documents\Stegano\crash.log
+     - the program now writes it automatically.
+
+
+STEP 5 - PUBLISH THE DOWNLOAD
+  Publish only after the license/terms and redistribution rights are clear,
+  the executable has been tested from the clean build, and the repository
+  contains only reviewed release files.
+  1. In a browser:  github.com/Rockster001/stegano
+  2. Right side:  Releases  ->  Create a new release
+     (if you see no Releases section: go to Tags instead, or
+     github.com/Rockster001/stegano/releases/new)
+  3. Tag: type  v1.0   and pick "Create new tag on publish".
+  4. Title:  Stegano 1.0   - description in your own words.
+  5. Drag  C:\Dev\Stegano\dist\Stegano.exe  into the attachments box
+     and wait for it to finish uploading.
+  6. Click  Publish release.
+  Your shareable download link is then:
+     https://github.com/Rockster001/stegano/releases/latest
+
+
+NOTES
+- After step 2 the repo is up to date on GitHub; the build output
+  (dist\ and build_venv\) is gitignored and will never be committed.
+- You CAN flip the repo back to Private now. But a private repo's
+  Releases need a GitHub login to download - for a freely downloadable
+  exe, keep the repo public.
+- If you ever rebuild later: just run build_exe.bat again; it reuses
+  the build environment, so later builds are quicker.

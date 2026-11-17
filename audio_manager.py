@@ -3,6 +3,7 @@ import wave
 import numpy as np
 from PyQt5.QtMultimedia import QSoundEffect, QMediaPlayer, QMediaContent
 from PyQt5.QtCore import QUrl, QTimer
+from app_paths import resource_path
 import logging
 
 logger = logging.getLogger("Stegano")
@@ -16,7 +17,7 @@ class AudioManager:
         self.music_player = QMediaPlayer()
         self.music_enabled = True
         self.sfx_enabled = True
-        self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.base_dir = resource_path()
         self._ensure_audio_files()
         self._load_sounds()
         self.set_music("idle")

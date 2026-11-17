@@ -20,7 +20,7 @@ class EncodeWorker(QThread):
             self.error.emit(str(e))
 
 class DecodeWorker(QThread):
-    decoding_finished = pyqtSignal(str, bool, int, str)
+    decoding_finished = pyqtSignal(str, bool, int, str, str)
     error = pyqtSignal(str)
     def __init__(self, path, delimiter, pass1, pass2, parent=None):
         super().__init__(parent)
@@ -30,15 +30,15 @@ class DecodeWorker(QThread):
         self.pass2 = pass2
     def run(self):
         try:
-            from steganography_utils import detect_message_format, decode_image, decode_dual_image
+            from stegano_core import detect_message_format, decode_image, decode_dual_image
             fmt = detect_message_format(self.path, self.delimiter)
             if fmt == 'dual':
                 msg, layer, was_encrypted, layer1_msg = decode_dual_image(self.path, self.delimiter, self.pass1, self.pass2)
-                self.decoding_finished.emit(msg, was_encrypted, layer, layer1_msg)
+                self.decoding_finished.emit(msg, was_encrypted, layer, layer1_msg, fmt)
             else:
                 msg, is_encrypted = decode_image(self.path, self.delimiter, self.pass1)
                 layer = 1 if msg else 0
-                self.decoding_finished.emit(msg, is_encrypted, layer, msg)
+                self.decoding_finished.emit(msg, is_encrypted, layer, msg, fmt)
         except Exception as e:
             logger.exception("Decoding failed")
             self.error.emit(str(e))
@@ -53,7 +53,7 @@ class ImageLoadWorker(QThread):
     def run(self):
         try:
             from PIL import Image
-            from steganography_utils import detect_message_format, decode_image, decode_dual_image, check_image_for_message
+            from stegano_core import detect_message_format, decode_image, decode_dual_image, check_image_for_message
             img = Image.open(self.path).convert("RGB")
             capacity_bits = img.size[0] * img.size[1] * 3
             fmt = detect_message_format(self.path, self.delimiter)

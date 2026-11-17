@@ -1,5 +1,5 @@
-from PyQt5.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout, QGridLayout, QDialog, QListWidget, QPushButton, QTextEdit, QLineEdit, QSizePolicy, QMessageBox
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QGridLayout, QDialog, QListWidget, QPushButton, QTextEdit, QLineEdit, QSizePolicy, QMessageBox
+from PyQt5.QtCore import QEvent, Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QColor, QPainter
 _COMMON_WEAK_WORDS = {
     "password", "letmein", "login", "admin", "welcome", "qwerty", "dragon",
@@ -123,6 +123,48 @@ class SavedPasswordsDialog(QDialog):
         self.setFixedSize(400, 350)
         self._init_ui()
         self._populate_list()
+        self._application = QApplication.instance()
+        self._click_away_filter_installed = False
+
+    def _install_click_away_filter(self):
+        if self._application and not self._click_away_filter_installed:
+            self._application.installEventFilter(self)
+            self._click_away_filter_installed = True
+
+    def _remove_click_away_filter(self):
+        if self._application and self._click_away_filter_installed:
+            self._application.removeEventFilter(self)
+            self._click_away_filter_installed = False
+
+    def exec_(self):
+        self._install_click_away_filter()
+        try:
+            return super().exec_()
+        finally:
+            self._remove_click_away_filter()
+
+    def showEvent(self, event):
+        self._install_click_away_filter()
+        super().showEvent(event)
+
+    def hideEvent(self, event):
+        self._remove_click_away_filter()
+        super().hideEvent(event)
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.MouseButtonPress and isinstance(obj, QWidget):
+            widget = obj
+            while widget is not None:
+                if widget is self:
+                    break
+                widget = widget.parentWidget()
+            else:
+                self.reject()
+                return True
+        elif obj is self._application and event.type() == QEvent.ApplicationDeactivate:
+            self.reject()
+        return super().eventFilter(obj, event)
+
     def _init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15)
