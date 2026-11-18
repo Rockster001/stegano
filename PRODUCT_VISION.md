@@ -75,6 +75,14 @@ recovery does not inherently require built-in playback: Stegano could save the
 recovered file and let the operating system open it. Any design must preserve
 the independence of message layers and existing text compatibility.
 
+Parked subtopic for future discussion: whether a much larger media payload
+(the example raised was a 250 MB audio file associated with a 10 MB image)
+could be carried alongside an image in a way that some software still displays
+as an image. This is distinct from pixel embedding, is not supported by the
+current app, and cannot be assumed to work with all image software or remain
+inconspicuous. The owner asked to set the idea aside for now. Revisit only when
+requested; do not treat it as an approved feature or implementation task.
+
 ## How to evolve the app
 
 1. Treat deliberate owner choices as product requirements, not defects.

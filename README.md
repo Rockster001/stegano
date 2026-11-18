@@ -54,11 +54,11 @@ Stegano runs on Windows 10 and 11 (64-bit).
 Clear for Reuse resets the image's entire RGB least-significant-bit plane in
 an internal temporary working copy. It does not create a user-visible
 intermediate file, and it never changes the selected source file. The final
-Save dialog suggests a unique, generic filename rather than reusing the
-source name, and saving over the source file is blocked. Since the old pixel
-bits cannot be recovered, this does not restore the exact virgin image or
-guarantee undetectability; the RGB channel values may each change by at most
-one.
+Save dialog opens in the source image's folder with no filename prefilled, so
+you must choose a new name; saving over the source file is blocked. Since the
+old pixel bits cannot be recovered, this does not restore the exact virgin
+image or guarantee undetectability; the RGB channel values may each change by
+at most one.
 
 **Two layers, one picture**
 

@@ -189,17 +189,6 @@ def _paths_are_same_file(path_a, path_b):
         return normalized_a == normalized_b
 
 
-def _unique_reuse_output_name(directory):
-    base_name = "reused_image_steganosed"
-    extensions = (".png", ".bmp", ".tiff", ".tif", ".webp")
-    candidate = base_name
-    suffix = 2
-    while any(os.path.exists(os.path.join(directory, candidate + ext)) for ext in extensions):
-        candidate = f"{base_name}_{suffix}"
-        suffix += 1
-    return candidate
-
-
 class SteganographyApp(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -1781,13 +1770,14 @@ class SteganographyApp(QMainWindow):
         source_path = self._cleared_source_path or self.current_image_path
         if self._cleared_source_path:
             save_directory = os.path.dirname(self._cleared_source_path)
-            default_name = _unique_reuse_output_name(save_directory)
+            initial_path = save_directory
         else:
             save_directory = self.settings.value("lastDir", "") or os.path.dirname(source_path)
             base = os.path.splitext(os.path.basename(source_path))[0]
             default_name = f"{base}_steganosed"
+            initial_path = os.path.join(save_directory, default_name)
         filters = "All Lossless Formats (*.png *.bmp *.tiff *.tif *.webp);;PNG Files (*.png);;BMP Files (*.bmp);;TIFF Files (*.tiff *.tif);;WebP Files (*.webp)"
-        s, selected_filter = QFileDialog.getSaveFileName(self, "Save Image", os.path.join(save_directory, default_name), filters)
+        s, selected_filter = QFileDialog.getSaveFileName(self, "Save Image", initial_path, filters)
         if not s: return
         ext = os.path.splitext(s)[1].lower()
         if ext == ".png": out_fmt = "PNG"

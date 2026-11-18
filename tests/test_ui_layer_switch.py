@@ -157,10 +157,6 @@ def test_clear_for_reuse_resets_message_state_and_protects_source(tmp_path, monk
     assert source_path.read_bytes() == b"original image"
     assert Stegano._paths_are_same_file(str(source_path), str(source_path))
     assert not Stegano._paths_are_same_file(str(source_path), clean_path)
-    suggested_name = Stegano._unique_reuse_output_name(str(tmp_path))
-    assert suggested_name == "reused_image_steganosed"
-    (tmp_path / f"{suggested_name}.png").write_bytes(b"existing output")
-    assert Stegano._unique_reuse_output_name(str(tmp_path)) == "reused_image_steganosed_2"
     assert window.pwd_input.text() == ""
     assert window.pwd_input2.text() == ""
     assert window.text_area.toPlainText() == ""
@@ -198,4 +194,36 @@ def test_clear_for_reuse_resets_message_state_and_protects_source(tmp_path, monk
 
     window._cleanup_clean_cover_tempdirs()
     window.deleteLater()
+
+
+def test_clear_for_reuse_save_dialog_requires_manual_filename(tmp_path, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    window = SteganographyApp.__new__(SteganographyApp)
+    QMainWindow.__init__(window)
+    window.worker_running = False
+    window._editing_layer = 1
+    window._message1_buffer = ""
+    window._message2_buffer = ""
+    window.text_area = QTextBrowser(window)
+    window.text_area.setPlainText("replacement message")
+    window.pwd_input = QLineEdit(window)
+    window.pwd_input2 = QLineEdit(window)
+    window._loaded_image_format = "none"
+    window._decoded_layer2_blob = None
+    window.available_capacity_bits = 100000
+    window.magic_header = b"header"
+    window.delimiter = "\x00\x00\x03"
+    window._cleared_source_path = str(tmp_path / "used.png")
+    window.current_image_path = str(tmp_path / "clean_cover.png")
+    dialog_arguments = {}
+
+    def fake_get_save_file_name(*args):
+        dialog_arguments["initial_path"] = args[2]
+        return "", ""
+
+    monkeypatch.setattr(Stegano.QFileDialog, "getSaveFileName", fake_get_save_file_name)
+
+    window._encode_msg()
+
+    assert dialog_arguments["initial_path"] == str(tmp_path)
     app.processEvents()
