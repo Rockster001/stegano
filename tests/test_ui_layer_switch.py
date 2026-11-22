@@ -46,6 +46,41 @@ def test_clicking_focused_layer_two_password_shows_layer_two():
     app.processEvents()
 
 
+def test_password_strength_meter_tracks_active_password_field():
+    app = QApplication.instance() or QApplication([])
+    window = SteganographyApp.__new__(SteganographyApp)
+    QMainWindow.__init__(window)
+    window.pwd_input = QLineEdit(window)
+    window.pwd_input2 = QLineEdit(window)
+    window.text_area = QTextBrowser(window)
+    window.password_strength_updates = []
+    window.password_strength_indicator = SimpleNamespace(
+        update_strength=window.password_strength_updates.append
+    )
+    window._editing_layer = 1
+    window._currently_shown_layer = 0
+    window._message1_buffer = ""
+    window._message2_buffer = ""
+    window._decoded_layer1_message = ""
+    window._decoded_layer2_message = ""
+    window._update_counter = lambda: None
+    window.pwd_input.textChanged.connect(window._on_password_changed)
+    window.pwd_input2.textChanged.connect(window._on_pass2_changed)
+
+    window.pwd_input.setText("first password")
+    assert window.password_strength_updates[-1] == "first password"
+
+    window._switch_to_layer(2)
+    window.pwd_input2.setText("second password")
+    assert window.password_strength_updates[-1] == "second password"
+
+    window._switch_to_layer(1)
+    assert window.password_strength_updates[-1] == "first password"
+
+    window.deleteLater()
+    app.processEvents()
+
+
 def test_successful_layer_two_decode_displays_layer_two(monkeypatch):
     app = QApplication.instance() or QApplication([])
     window = SteganographyApp.__new__(SteganographyApp)
@@ -141,6 +176,7 @@ def test_clear_for_reuse_resets_message_state_and_protects_source(tmp_path, monk
     window._loaded_image_format = "dual"
     window._loaded_image_has_message = True
     window._loaded_image_is_encrypted = True
+    window.password_strength_indicator = SimpleNamespace(update_strength=lambda _: None)
     window._set_worker = lambda _: None
     window._update_watermark = lambda: None
     window._update_counter = lambda: None

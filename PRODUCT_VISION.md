@@ -60,9 +60,28 @@ implemented.
 1. Investigate startup sequencing: background music can be heard for several
    seconds before the main window appears. Identify why this happens and agree
    on the desired startup behavior before changing it.
-2. Remember Load and Save folders independently. Each operation should reopen
-   at the most recently used folder for that operation, rather than sharing one
-   folder preference. Confirm appropriate first-run defaults when implementing.
+2. Revisit how Load and Save locations should be remembered. Separate
+   preferences may be appropriate, but simple per-operation "most recently
+   used folder" behavior may not be sufficient. Discuss the desired behavior
+   and first-run defaults before implementation; no location-memory behavior
+   has been approved yet.
+3. Consider replacing the current UI gadgets with custom-designed graphics.
+   The scope and design are open for future discussion; do not treat this as
+   approval to begin a visual redesign.
+4. Discuss a Scratchpad facility: a UI extension for the current run/session,
+   independent of any selected image, message, or layer. The initial intent is
+   for it to start empty and not be retained after the program closes. Decide
+   whether users should be able to explicitly save/export notes or opt into
+   local persistence through Settings; no retention behavior has been approved.
+5. Discuss whether and how to provide a Settings function. `PHASE2_DESIGN.md`
+   already records a deferred Settings dialog with four proposed settings.
+   Revisit its priority and scope, including whether Scratchpad persistence
+   belongs there. This is a discussion item, not approval to implement it.
+6. Keep local random-passphrase generation as a future option for the password
+   workflow. Any generator must be independent of saved-password storage.
+   Decide its format, UI, and retention behavior before implementation. The
+   current strength-scoring method remains in place; the proposed `zxcvbn`
+   library trial was declined, and no estimator library has been adopted.
 
 ## Exploratory idea
 

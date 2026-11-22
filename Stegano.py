@@ -1170,8 +1170,16 @@ class SteganographyApp(QMainWindow):
         else:
             field.setEchoMode(QLineEdit.Password)
 
-    def _on_password_changed(self, text):
-        self.password_strength_indicator.update_strength(text)
+    def _update_password_strength_for_active_field(self):
+        if self.text_area.isReadOnly():
+            active_layer = self._currently_shown_layer
+        else:
+            active_layer = self._editing_layer
+        password_field = self.pwd_input2 if active_layer == 2 else self.pwd_input
+        self.password_strength_indicator.update_strength(password_field.text())
+
+    def _on_password_changed(self, _text):
+        self._update_password_strength_for_active_field()
         self._update_counter()
 
     def _estimate_encrypted_len(self, raw_len):
@@ -1193,6 +1201,7 @@ class SteganographyApp(QMainWindow):
         else:
             self.pwd_input.setStyleSheet(active_style)
             self.pwd_input2.setStyleSheet("")
+        self._update_password_strength_for_active_field()
 
     def _reset_dual_compose_state(self):
         self._layer2_active = False
@@ -1204,9 +1213,11 @@ class SteganographyApp(QMainWindow):
         self._decoded_layer2_blob = None
         self._currently_shown_layer = 0
         self._clear_pass_field_highlight()
+        self._update_password_strength_for_active_field()
 
     def _switch_to_layer(self, target):
         if self._editing_layer == target and not self.text_area.isReadOnly():
+            self._update_password_strength_for_active_field()
             return
         if not self.text_area.isReadOnly():
             if self._editing_layer == 1:
@@ -1230,7 +1241,8 @@ class SteganographyApp(QMainWindow):
         self._update_pass_field_highlight()
         self._update_counter()
 
-    def _on_pass2_changed(self, text):
+    def _on_pass2_changed(self, _text):
+        self._update_password_strength_for_active_field()
         self._update_counter()
 
     def _on_pass2_enter(self):

@@ -307,6 +307,49 @@ warrant revisiting only if the concept above advances to design. See also
 PHASE2\_DESIGN.md Part 6 (password replacement).
 
 
+REVISITED CONCEPT - MULTIPLE MESSAGES IN BOTH PASSES (22/11/2026)
+
+The owner explored extending the existing two-pass model so Pass 1 and Pass 2
+
+could each contain multiple distinct messages, each associated with its own
+
+password. The sender could add message/password pairs to one carrier and share
+
+that carrier with several recipients; each recipient would enter their password
+
+to access their intended message. The same multi-message capability in Pass 2
+
+could create branching relationships, for example Message 1/1 paired with
+
+Message 2/1, Message 2/2, and so on.
+
+
+This is technically feasible in principle, but the message relationships and
+
+composition/decoding behavior need further design. A live capacity calculation
+
+could report how much serialized payload space remains, but carrier capacity
+
+does not determine the relationship model. A versioned format and substantial
+
+changes to message workflow would likely be needed; this is not necessarily a
+
+rewrite of the entire application. Existing single- and dual-payload images
+
+should remain readable.
+
+
+The owner considers the concept worth further exploration, but agreed not to
+
+force it into the current fixed two-payload model. Possible SteganoV2 topic;
+
+not an implementation commitment. This revisits the earlier hybrid idea above
+
+and does not erase its historical rationale or the structural-ignorance
+
+principle below.
+
+
 
 DESIGN PRINCIPLE (owner's ruling 27/09) - STRUCTURAL IGNORANCE
 
