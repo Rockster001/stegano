@@ -128,7 +128,8 @@ Test files belong in C:\\Dev\\SteganoTest (outside the repo). Program verified w
 
 
 
-KNOWN DEFECT: Save blocked after failed decode (discovered 26/09/2026)
+HISTORICAL REPORT — RESOLVED: Save appeared blocked after failed decode
+(reported 26/09/2026)
 
 Reproduction: load encoded image, decode with Pass 1, type a NEW password into
 
@@ -136,15 +137,21 @@ Pass 1, press Enter (decode fails as designed), click message window (Encode mod
 
 type new password in Pass 1, press Enter (inert, as designed), click Save.
 
-RESULT: Save does nothing. WORKAROUND: click Cancel first, then Save works.
+RESULT AT THE TIME: Save appeared to do nothing. WORKAROUND: click Cancel first,
+then Save works.
 
-Status: RESOLVED 29/09/2026 - root cause was the save REFUSING with a
+Resolved 29/09/2026: Save was refusing with a
 
-near-invisible status message ("Message 2 has content..."), not state corruption.
+near-invisible status message ("Message 2 has content..."), not because of
+state corruption. The error-visibility change made such refusals noticeable.
 
-Fixed by the error-visibility change (see Session 29/09/2026 entry below).
+Current status (22/11/2026): do not report this as an open defect. The current
+save logic no longer has the old "Message 2 has content" rejection: if Message 2
+has text and Pass 2 is blank, it uses Pass 1 when present; otherwise it informs
+the user that Message 2 will be unencrypted. The exact historical UI sequence
+has not been manually rerun against the current code.
 
-This section's original suspected cause is superseded by that entry.
+See Session 29/09/2026 below for the error-visibility fix.
 
 
 
@@ -198,7 +205,8 @@ Syntax check passed; committed via save.bat as 5c7d996.
 
 OPEN ITEMS:
 
-UNREPRODUCED: one occurrence of "Message 2 has content" warning on a virgin JPEG
+UNCONFIRMED, SEPARATE OBSERVATION: one occurrence of "Message 2 has content"
+warning on a virgin JPEG
 
 (load -> type -> Pass 1 -> Save). Two controlled reproduction attempts (clean
 
@@ -208,7 +216,8 @@ trigger: stray focus on Pass 2 (eventFilter silently switches message slots on
 
 password-field focus). If it recurs, capture the exact click sequence before
 
-touching anything.
+touching anything. Do not treat this one-off observation as confirmation that
+the resolved historical defect has returned.
 
 DESIGN DECISION PENDING (user request): saving should arguably NOT clear
 
