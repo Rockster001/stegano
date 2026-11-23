@@ -68,11 +68,22 @@ implemented.
 3. Consider replacing the current UI gadgets with custom-designed graphics.
    The scope and design are open for future discussion; do not treat this as
    approval to begin a visual redesign.
-4. Discuss a Scratchpad facility: a UI extension for the current run/session,
-   independent of any selected image, message, or layer. The initial intent is
-   for it to start empty and not be retained after the program closes. Decide
-   whether users should be able to explicitly save/export notes or opt into
-   local persistence through Settings; no retention behavior has been approved.
+4. **Implement the Scratchpad.** It is a non-modal floating plain-text window,
+   independent of the selected image, message, or layer. Open it from a
+   title-bar control or Ctrl+Shift+N. Provide Clear, Restore, and Save controls.
+   Clear empties the current text but leaves the saved snapshot available to
+   Restore; Restore asks before replacing nonempty current text; Save writes
+   the current snapshot. Load an existing snapshot automatically at startup.
+   On normal application close, silently save nonempty text and delete the
+   snapshot if the pad is empty.
+
+   Keep one local encrypted text snapshot in a nondescript file. The key is
+   deterministically derived from the timestamp of a persistent per-user copy
+   of the bundled background image and embedded in that image using Stegano's
+   existing image encoding. This is intended as local concealment and
+   protection against casual inspection, not as protection against a
+   determined examiner. If the key-bearing image or its timestamp is lost,
+   the prior snapshot may be unrecoverable; this limited loss is accepted.
 5. Discuss whether and how to provide a Settings function. `PHASE2_DESIGN.md`
    already records a deferred Settings dialog with four proposed settings.
    Revisit its priority and scope, including whether Scratchpad persistence

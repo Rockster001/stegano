@@ -66,6 +66,14 @@ def stegano_home():
     return os.path.join(documents_dir(), "Stegano")
 
 
+def local_app_data_dir():
+    """The per-user local application-data folder for Stegano."""
+    base = os.environ.get("LOCALAPPDATA")
+    if not base:
+        base = os.path.join(os.path.expanduser("~"), "AppData", "Local")
+    return os.path.join(base, "Stegano")
+
+
 def images_dir():
     """Default folder for the Select Image dialog: Documents\\Stegano\\Images."""
     return os.path.join(stegano_home(), "Images")

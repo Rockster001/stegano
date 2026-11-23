@@ -51,8 +51,15 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, pyqtSignal, QThread, QTimer, QSettings, QUrl, QEvent, QPoint, QMargins
 from PyQt5.QtGui import QFont, QPixmap, QCursor, QDesktopServices, QIcon
 from PyQt5.QtMultimedia import QSoundEffect, QMediaPlayer, QMediaContent
-from app_paths import resource_path, images_dir, ensure_starter_images, write_crash_log
+from app_paths import (
+    resource_path,
+    images_dir,
+    local_app_data_dir,
+    ensure_starter_images,
+    write_crash_log,
+)
 from audio_manager import AudioManager
+from scratchpad import ScratchpadStorageError, ScratchpadStore, ScratchpadWindow
 from password_utils import (
     estimate_password_strength,
     PasswordStrengthMeter,
@@ -193,6 +200,22 @@ class SteganographyApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.settings = QSettings("Steganosaurus", "SteganoApp")
+        self._scratchpad_window = None
+        self._scratchpad_text = ""
+        self._scratchpad_storage_warning = None
+        try:
+            self.scratchpad_store = ScratchpadStore(
+                local_app_data_dir(),
+                resource_path("STEGANO.png"),
+            )
+        except ScratchpadStorageError as exc:
+            self.scratchpad_store = None
+            self._scratchpad_storage_warning = str(exc)
+        else:
+            try:
+                self._scratchpad_text = self.scratchpad_store.load()
+            except ScratchpadStorageError as exc:
+                self._scratchpad_storage_warning = str(exc)
         self._password_storage_warning = None
         self._last_shown_password_storage_warning = None
         self._password_storage_blocked = False
@@ -283,6 +306,8 @@ class SteganographyApp(QMainWindow):
         self._ui_ready = True
         if self._password_storage_warning:
             QTimer.singleShot(0, self._show_password_storage_warning)
+        if self._scratchpad_storage_warning:
+            QTimer.singleShot(100, self._show_scratchpad_storage_warning)
         QTimer.singleShot(500, self._update_watermark)
         self._restore_window_state()
 
@@ -315,6 +340,12 @@ class SteganographyApp(QMainWindow):
             if reply != QMessageBox.Yes:
                 event.ignore()
                 return
+        try:
+            self._persist_scratchpad()
+        except ScratchpadStorageError as exc:
+            QMessageBox.critical(self, "Scratchpad", str(exc))
+            event.ignore()
+            return
         self._cleanup_workers()
         self._cleanup_clean_cover_tempdirs()
         if hasattr(self, 'active_viewer') and self.active_viewer:
@@ -326,6 +357,44 @@ class SteganographyApp(QMainWindow):
         self._persist_saved_passwords()
         self.settings.sync()
         event.accept()
+
+    def _persist_scratchpad(self):
+        text = (
+            self._scratchpad_window.editor.toPlainText()
+            if self._scratchpad_window is not None
+            else self._scratchpad_text
+        )
+        if self.scratchpad_store is None:
+            if text.strip():
+                raise ScratchpadStorageError(
+                    self._scratchpad_storage_warning
+                    or "Scratchpad storage is unavailable."
+                )
+            return
+        if text.strip():
+            self.scratchpad_store.save(text)
+        else:
+            self.scratchpad_store.delete()
+        self._scratchpad_text = text
+
+    def _show_scratchpad_storage_warning(self):
+        QMessageBox.warning(
+            self,
+            "Scratchpad",
+            self._scratchpad_storage_warning,
+        )
+
+    def _open_scratchpad(self):
+        if self._scratchpad_window is None:
+            self._scratchpad_window = ScratchpadWindow(
+                self.scratchpad_store,
+                self._scratchpad_text,
+                self._scratchpad_storage_warning,
+                self,
+            )
+        self._scratchpad_window.show()
+        self._scratchpad_window.raise_()
+        self._scratchpad_window.activateWindow()
 
     def _get_local_key(self):
         seed = (platform.node() + "steganosaurus-local").encode()
@@ -673,7 +742,11 @@ class SteganographyApp(QMainWindow):
         self.background = QLabel(container)
         self.background.setScaledContents(True)
         self.background.lower()
-        p = resource_path("STEGANO.png")
+        p = (
+            self.scratchpad_store.background_path
+            if self.scratchpad_store is not None
+            else resource_path("STEGANO.png")
+        )
         if os.path.exists(p):
             with _SuppressStderr():
                 pix = QPixmap(p)
@@ -748,6 +821,7 @@ class SteganographyApp(QMainWindow):
 <h2 style='color: #4A85B8;'>Keyboard Shortcuts</h2>
 <table style='color: #E0E0E0; border-collapse: collapse;'>
 <tr><td style='padding: 8px; border-bottom: 1px solid #444;'><b>Ctrl+S</b></td><td style='padding: 8px; border-bottom: 1px solid #444;'>Save / Encode message</td></tr>
+<tr><td style='padding: 8px; border-bottom: 1px solid #444;'><b>Ctrl+Shift+N</b></td><td style='padding: 8px; border-bottom: 1px solid #444;'>Open Scratchpad</td></tr>
 <tr><td style='padding: 8px; border-bottom: 1px solid #444;'><b>Ctrl+Scroll</b></td><td style='padding: 8px; border-bottom: 1px solid #444;'>Zoom text in/out</td></tr>
 <tr><td style='padding: 8px; border-bottom: 1px solid #444;'><b>Escape</b></td><td style='padding: 8px; border-bottom: 1px solid #444;'>Close viewer / Cancel</td></tr>
 <tr><td style='padding: 8px; border-bottom: 1px solid #444;'><b>Enter</b></td><td style='padding: 8px; border-bottom: 1px solid #444;'>Decode with password</td></tr>
@@ -818,6 +892,9 @@ class SteganographyApp(QMainWindow):
         self._setup_bg(self.container)
         self.save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
         self.save_shortcut.activated.connect(self._handle_save_shortcut)
+        self.scratchpad_shortcut = QShortcut(QKeySequence("Ctrl+Shift+N"), self)
+        self.scratchpad_shortcut.setContext(Qt.ApplicationShortcut)
+        self.scratchpad_shortcut.activated.connect(self._open_scratchpad)
         tf = QFrame()
         tf.setObjectName("TitleBar")
         tl = QHBoxLayout(tf)
@@ -861,6 +938,16 @@ class SteganographyApp(QMainWindow):
         self.shortcuts_btn.clicked.connect(self._show_keyboard_shortcuts)
         tl.addWidget(self.shortcuts_btn)
         self._register_tooltip(self.shortcuts_btn, "Show keyboard shortcuts help")
+        self.scratchpad_btn = QPushButton("✎")
+        self.scratchpad_btn.setObjectName("HelpBtn")
+        self.scratchpad_btn.setFixedWidth(28)
+        self.scratchpad_btn.setFixedHeight(28)
+        self.scratchpad_btn.clicked.connect(self._open_scratchpad)
+        tl.addWidget(self.scratchpad_btn)
+        self._register_tooltip(
+            self.scratchpad_btn,
+            "Open Scratchpad (Ctrl+Shift+N)",
+        )
         self.undo_btn = QPushButton("↶")
         self.undo_btn.setObjectName("HelpBtn")
         self.undo_btn.setFixedWidth(28)
