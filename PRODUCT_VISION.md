@@ -93,6 +93,10 @@ implemented.
    Decide its format, UI, and retention behavior before implementation. The
    current strength-scoring method remains in place; the proposed `zxcvbn`
    library trial was declined, and no estimator library has been adopted.
+7. Review the intended scope and presentation of the Undo/Redo controls. They
+   currently apply to message-text editing only. Decide whether that scope is
+   appropriate and make their purpose clear as part of the UI review; do not
+   assume they should undo broader application actions.
 
 ## Exploratory idea
 
